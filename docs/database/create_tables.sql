@@ -54,7 +54,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE vagas TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE contribuicoes TO anon, authenticated;
 
 -- 5. View para facilitar o consumo no Front-end
-CREATE OR REPLACE VIEW locais_com_vagas AS
+CREATE OR REPLACE VIEW locais_com_vagas 
+WITH (security_invoker = true) AS
 SELECT
   l.id,
   l.id_usuario_criador, 
