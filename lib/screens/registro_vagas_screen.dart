@@ -41,6 +41,7 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
   late final TextEditingController referenciaController;
   RegistroPendente? dados;
   bool carregando = false;
+  bool _salvandoEmAndamento = false;
   int _nivelZoom = 0;
   String? idLocalExistente;
   List<String> idsParaDeletar =
@@ -300,26 +301,47 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
   }
 
   Future<void> _salvarTudo() async {
-    if (vagasParaRegistro.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Selecione ao menos um tipo de vaga")),
-      );
+    // LOCK: primeira linha executada, de forma 100% síncrona, antes de qualquer outra coisa.
+    if (_salvandoEmAndamento) {
+      debugPrint("Salvamento já em andamento, ignorando clique duplicado.");
       return;
     }
+    _salvandoEmAndamento = true;
 
-    // Validar fotos: precisa de foto local OU já ter uma URL no banco
-    for (var v in vagasParaRegistro) {
-      if (v.foto == null && v.urlFotoExistente == null) {
+    try {
+      if (vagasParaRegistro.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("A foto para ${v.tipo} é obrigatória")),
+          const SnackBar(content: Text("Selecione ao menos um tipo de vaga")),
         );
         return;
       }
-    }
 
-    setState(() => carregando = true);
+      // Validações ANTES de qualquer escrita no banco
+      for (var v in vagasParaRegistro) {
+        if (v.validando) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Aguarde a validação das imagens...")),
+          );
+          return;
+        }
+        if (v.erroValidacao != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Corrija a foto de ${v.tipo} antes de salvar."),
+            ),
+          );
+          return;
+        }
+        if (v.foto == null && v.urlFotoExistente == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("A foto para ${v.tipo} é obrigatória")),
+          );
+          return;
+        }
+      }
 
-    try {
+      setState(() => carregando = true);
+
       final userId = supabase.auth.currentUser?.id;
 
       // 1. Salvar ou Atualizar o Local
@@ -341,6 +363,8 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
           .single();
 
       final localId = localResponse['id'];
+      idLocalExistente = localId
+          .toString(); // Trava re-inserção em chamadas futuras
 
       // 2. Deletar vagas removidas
       if (idsParaDeletar.isNotEmpty) {
@@ -349,32 +373,14 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
 
       // 3. Salvar cada vaga individualmente
       for (var vaga in vagasParaRegistro) {
-        if (vaga.validando) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Aguarde a validação das imagens...")),
-          );
-          return;
-        }
-        if (vaga.erroValidacao != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Corrija a foto de ${vaga.tipo} antes de salvar."),
-            ),
-          );
-          return;
-        }
-
         String? urlParaSalvar = vaga.urlFotoExistente;
 
-        // Lógica de Verificação de Mudança
         bool fotoMudou = vaga.foto != null;
-        // Comparamos a quantidade atual com a que veio do banco (se houver)
         bool quantidadeMudou =
             vaga.idVaga != null &&
             (vaga.quantidade != vaga.quantidadeExistente);
         bool ehNovaVaga = vaga.idVaga == null;
 
-        // SE O USUÁRIO TIROU UMA NOVA FOTO
         if (fotoMudou) {
           if (vaga.urlFotoExistente != null) {
             try {
@@ -398,7 +404,6 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
               .getPublicUrl(fileName);
         }
 
-        // Preparamos o mapa de dados para o upsert
         final dadosVaga = {
           if (vaga.idVaga != null) 'id': vaga.idVaga,
           'id_local': localId,
@@ -407,7 +412,6 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
           'foto_url': urlParaSalvar,
         };
 
-        // Se algo mudou (ou é novo), atualizamos os campos de auditoria
         if (fotoMudou || quantidadeMudou || ehNovaVaga) {
           dadosVaga['id_usuario_ultima_alteracao'] = userId;
           dadosVaga['data_ultima_alteracao'] = DateTime.now()
@@ -434,11 +438,15 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Erro ao salvar: $e")));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Erro ao salvar: $e")));
+      }
     } finally {
-      setState(() => carregando = false);
+      _salvandoEmAndamento =
+          false; // libera o lock em TODOS os caminhos de saída
+      if (mounted) setState(() => carregando = false);
     }
   }
 
@@ -494,9 +502,7 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
                 children: [
                   const Text(
                     "Endereço Identificado:",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -586,13 +592,12 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
                                       strokeWidth: 2,
                                     ) // Mostra progresso no lugar do ícone
                                   : Icon(
-                                      vaga.foto == null 
+                                      vaga.foto == null
                                           ? Icons.photo_library
                                           : (vaga.erroValidacao != null
                                                 ? Icons.error
                                                 : Icons.check_circle),
-                                      color:
-                                          vaga.foto == null 
+                                      color: vaga.foto == null
                                           ? Colors.grey
                                           : (vaga.erroValidacao != null
                                                 ? Colors.red
@@ -625,11 +630,20 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
                   const SizedBox(height: 20),
 
                   Center(
-                    child: ElevatedButton(
-                      onPressed: carregando ? null : _salvarTudo,
-                      child: carregando
-                          ? const CircularProgressIndicator()
-                          : const Text("Confirmar e Salvar"),
+                    child: AbsorbPointer(
+                      absorbing:
+                          carregando ||
+                          vagasParaRegistro.any((v) => v.validando),
+                      child: ElevatedButton(
+                        onPressed:
+                            (carregando ||
+                                vagasParaRegistro.any((v) => v.validando))
+                            ? null
+                            : _salvarTudo,
+                        child: carregando
+                            ? const CircularProgressIndicator()
+                            : const Text("Confirmar e Salvar"),
+                      ),
                     ),
                   ),
                 ],

@@ -128,6 +128,81 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
     );
   }
 
+  Future<void> _confirmarExclusao(Map<String, dynamic> local) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Excluir registro"),
+        content: Text(
+          "Tem certeza que deseja excluir o registro de \"${local['logradouro']}, ${local['numero']}\"?\n\n"
+          "Essa ação é irreversível e vai remover o local, as vagas e as contribuições associadas para TODOS os usuários do app.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancelar"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Excluir", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar != true) return;
+
+    if (!(await _temInternet())) {
+      if (mounted) {
+        _mostrarDialogo(
+          "Sem Conexão",
+          "Parece que você está offline. Verifique sua conexão com a internet para excluir este registro.",
+        );
+      }
+      return;
+    }
+
+    try {
+      final deletados = await supabase
+          .from('locais')
+          .delete()
+          .eq('id', local['id'])
+          .select();
+
+      if (deletados.isEmpty) {
+        // 0 linhas afetadas = RLS bloqueou ou o registro não existe mais
+        throw Exception(
+          "Nenhuma linha foi excluída. Verifique as permissões (RLS) ou se você é o criador do registro.",
+        );
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _historico.removeWhere((item) => item['id'] == local['id']);
+      });
+
+      // Atualiza o cache local para refletir a exclusão
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_cacheKey, jsonEncode(_historico));
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Registro excluído com sucesso."),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      debugPrint("Erro ao excluir registro: $e");
+      if (mounted) {
+        _mostrarDialogo(
+          "Erro",
+          "Não foi possível excluir o registro. Tente novamente.",
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -282,35 +357,54 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
                                     );
                                   }).toList(),
                                   const SizedBox(height: 8),
-                                  Center(
-                                    child: TextButton.icon(
-                                      onPressed: () async {
-                                        if (!(await _temInternet())) {
-                                          if (mounted) {
-                                            _mostrarDialogo(
-                                              "Sem Conexão",
-                                              "Parece que você está offline. Verifique sua conexão com a internet para editar este registro.",
-                                            );
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      TextButton.icon(
+                                        onPressed: () async {
+                                          if (!(await _temInternet())) {
+                                            if (mounted) {
+                                              _mostrarDialogo(
+                                                "Sem Conexão",
+                                                "Parece que você está offline. Verifique sua conexão com a internet para editar este registro.",
+                                              );
+                                            }
+                                            return;
                                           }
-                                          return; // Interrompe aqui
-                                        }
-                                        await Navigator.pushNamed(
-                                          context,
-                                          '/registro_vagas',
-                                          arguments: item,
-                                        );
-                                        _buscarHistorico(); // Atualiza a lista ao voltar
-                                      },
-                                      icon: const Icon(Icons.edit, size: 20),
-                                      label: const Text("Editar registro"),
-                                      style: TextButton.styleFrom(
-                                        foregroundColor: Colors.blue[700],
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 16,
-                                          vertical: 8,
+                                          await Navigator.pushNamed(
+                                            context,
+                                            '/registro_vagas',
+                                            arguments: item,
+                                          );
+                                          _buscarHistorico();
+                                        },
+                                        icon: const Icon(Icons.edit, size: 20),
+                                        label: const Text("Editar registro"),
+                                        style: TextButton.styleFrom(
+                                          foregroundColor: Colors.blue[700],
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 8,
+                                          ),
                                         ),
                                       ),
-                                    ),
+                                      TextButton.icon(
+                                        onPressed: () =>
+                                            _confirmarExclusao(item),
+                                        icon: const Icon(
+                                          Icons.delete_outline,
+                                          size: 20,
+                                        ),
+                                        label: const Text("Excluir registro"),
+                                        style: TextButton.styleFrom(
+                                          foregroundColor: Colors.red[700],
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 8,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
