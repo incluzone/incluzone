@@ -125,6 +125,11 @@ class _HomeScreenState extends State<HomeScreen>
   List<Map<String, dynamic>> _todosOsLocais = [];
   bool _menuAberto = false;
   int _nivelZoom = 0;
+  // Controla o texto do campo de digitação
+// Guardam o controle e o texto da pesquisa
+final TextEditingController _pesquisaController = TextEditingController();
+  // Guarda o texto que a pessoa digitou
+String _textoPesquisa = '';
 
   @override
   void initState() {
@@ -151,16 +156,19 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _positionStream?.cancel(); // Para de seguir o usuário ao sair da tela
-    _cacheStore.close();
-    if (_realtimeSubscription != null) {
-      Supabase.instance.client.removeChannel(_realtimeSubscription!);
-    }
-    super.dispose();
+@override
+void dispose() {
+  WidgetsBinding.instance.removeObserver(this);
+  _positionStream?.cancel();
+  _cacheStore.close();
+  
+  _pesquisaController.dispose(); // Limpa o controller da barra de pesquisa
+
+  if (_realtimeSubscription != null) {
+    Supabase.instance.client.removeChannel(_realtimeSubscription!);
   }
+  super.dispose();
+}
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -769,24 +777,44 @@ class _HomeScreenState extends State<HomeScreen>
     _aplicarFiltro();
   }
 
-  void _aplicarFiltro() {
-    if (!mounted) return;
-    // Filtra a lista bruta baseada nos tipos selecionados no Set
-    final locaisFiltrados = _todosOsLocais
-        .map((local) {
-          final novasVagas = (local['vagas'] as List)
-              .where((v) => _filtrosAtivos.contains(v['tipo_vaga']))
-              .toList();
+void _aplicarFiltro() {
+  if (!mounted) return;
 
-          return {...local, 'vagas': novasVagas};
-        })
-        .where((local) => (local['vagas'] as List).isNotEmpty)
+  final locaisFiltrados = _todosOsLocais.map((local) {
+    // 1. Filtra as vagas pelo tipo selecionado
+    final novasVagas = (local['vagas'] as List)
+        .where((v) => _filtrosAtivos.contains(v['tipo_vaga']))
         .toList();
+    return {...local, 'vagas': novasVagas};
+  }).where((local) {
+    bool temVagas = (local['vagas'] as List).isNotEmpty;
 
-    setState(() {
-      _markers = gerarMarcadores(locaisFiltrados);
-    });
-  }
+    // 2. Compara o texto digitado com a referência e o endereço
+    String referencia = (local['referencia'] ?? '').toString().toLowerCase();
+    String endereco = (local['endereco'] ?? '').toString().toLowerCase();
+    String busca = _textoPesquisa.trim().toLowerCase();
+
+    bool combinaComPesquisa = busca.isEmpty ||
+        referencia.contains(busca) ||
+        endereco.contains(busca);
+
+    return temVagas && combinaComPesquisa;
+  }).toList();
+
+  setState(() {
+    _markers = gerarMarcadores(locaisFiltrados);
+  });
+  // Se a pesquisa encontrou exatamente 1 lugar, anima o mapa até ele!
+if (_textoPesquisa.isNotEmpty && locaisFiltrados.length == 1) {
+  final umLocal = locaisFiltrados.first;
+  final lat = (umLocal['latitude'] as num).toDouble();
+  final lng = (umLocal['longitude'] as num).toDouble();
+  _animatedMapController.animateTo(
+    dest: LatLng(lat, lng),
+    zoom: 17.0,
+  );
+}
+}
 
   // Salva os filtros ativos no disco
   Future<void> _salvarFiltrosNoCache() async {
@@ -1499,6 +1527,50 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
 
                 Positioned(top: 0, left: 0, child: _buildFiltroCustom()),
+                // 🔍 BARRA DE PESQUISA POR REFERÊNCIA
+Positioned(
+  top: 16,
+  left: 16,
+  right: 16, // Deixa a barra na largura quase total da tela
+  child: Card(
+    elevation: 6,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(25),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: TextField(
+        controller: _pesquisaController,
+        onChanged: (texto) {
+          setState(() {
+            _textoPesquisa = texto;
+          });
+          _aplicarFiltro(); // 🪄 Toda vez que digita uma letra, atualiza o mapa em tempo real!
+        },
+        decoration: InputDecoration(
+          hintText: 'Pesquisar referência (ex: Lanchonete X, Farmácia)...',
+          hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+          prefixIcon: const Icon(Icons.search, color: Colors.blueAccent),
+          // Se tiver texto digitado, mostra o botão "X" para apagar tudo rapidamente
+          suffixIcon: _textoPesquisa.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear, color: Colors.grey),
+                  onPressed: () {
+                    _pesquisaController.clear();
+                    setState(() {
+                      _textoPesquisa = '';
+                    });
+                    _aplicarFiltro(); // Limpa e volta a mostrar todos os pins
+                  },
+                )
+              : null,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+      ),
+    ),
+  ),
+),
 
                 if (_mapReady)
                   Positioned(
