@@ -1399,15 +1399,6 @@ if (_textoPesquisa.isNotEmpty && locaisFiltrados.length == 1) {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text(
-              nomeUsuario != null
-                  ? "Seja bem-vindo, $nomeUsuario!"
-                  : "Seja bem-vindo, visitante!",
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-          ),
           Expanded(
             child: Stack(
               children: [
@@ -1526,12 +1517,11 @@ if (_textoPesquisa.isNotEmpty && locaisFiltrados.length == 1) {
                     ],
                   ),
 
-                Positioned(top: 0, left: 0, child: _buildFiltroCustom()),
-                // 🔍 BARRA DE PESQUISA POR REFERÊNCIA
+// 1. BARRA DE PESQUISA (Fica no topo, na posição top: 16)
 Positioned(
   top: 16,
   left: 16,
-  right: 16, // Deixa a barra na largura quase total da tela
+  right: 16,
   child: Card(
     elevation: 6,
     shape: RoundedRectangleBorder(
@@ -1545,13 +1535,12 @@ Positioned(
           setState(() {
             _textoPesquisa = texto;
           });
-          _aplicarFiltro(); // 🪄 Toda vez que digita uma letra, atualiza o mapa em tempo real!
+          _aplicarFiltro();
         },
         decoration: InputDecoration(
-          hintText: 'Pesquisar referência (ex: Lanchonete X, Farmácia)...',
+          hintText: 'Pesquisar referência (ex: Farmácia, Loja X)...',
           hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
           prefixIcon: const Icon(Icons.search, color: Colors.blueAccent),
-          // Se tiver texto digitado, mostra o botão "X" para apagar tudo rapidamente
           suffixIcon: _textoPesquisa.isNotEmpty
               ? IconButton(
                   icon: const Icon(Icons.clear, color: Colors.grey),
@@ -1560,7 +1549,7 @@ Positioned(
                     setState(() {
                       _textoPesquisa = '';
                     });
-                    _aplicarFiltro(); // Limpa e volta a mostrar todos os pins
+                    _aplicarFiltro();
                   },
                 )
               : null,
@@ -1572,36 +1561,26 @@ Positioned(
   ),
 ),
 
-                if (_mapReady)
-                  Positioned(
-                    top: 16,
-                    right: 16,
-                    child: FloatingActionButton(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.blueAccent,
-                      elevation: 4,
-                      onPressed: _centralizarNoUsuario,
-                      child: const Icon(Icons.my_location),
-                    ),
-                  ),
+// 2. FILTRO DE VAGAS (Mudou para top: 80 para ficar ABAIXO da barra)
+Positioned(
+  top: 80,
+  left: 0,
+  child: _buildFiltroCustom(),
+),
 
-                if (!_mapReady)
-                  Container(
-                    color: Colors.white,
-                    child: const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          CircularProgressIndicator(),
-                          SizedBox(height: 16),
-                          Text(
-                            "Localizando...",
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+// 3. BOTÃO DE GPS (Mudou para top: 80 para alinhar com o filtro)
+if (_mapReady)
+  Positioned(
+    top: 80,
+    right: 16,
+    child: FloatingActionButton(
+      backgroundColor: Colors.white,
+      foregroundColor: Colors.blueAccent,
+      elevation: 4,
+      onPressed: _centralizarNoUsuario,
+      child: const Icon(Icons.my_location),
+    ),
+  ),
               ],
             ),
           ),
