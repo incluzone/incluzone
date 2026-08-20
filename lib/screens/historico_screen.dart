@@ -41,35 +41,51 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
     // Salva no disco
     await prefs.setInt('nivel_zoom', _nivelZoom);
 
-    // ESTA É A PARTE QUE FALTA:
     // Acessa o estado do MyApp através da chave global e chama o método de atualização
     myAppKey.currentState?.atualizarEscala(_nivelZoom);
   }
 
   Future<void> _carregarConfiguracoesIniciais() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
-    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
+      });
+    } catch (e) {
+      // Falha ao carregar preferências não é crítica; a tela segue com o padrão.
+      debugPrint("Erro ao carregar configurações: $e");
+    }
   }
 
-  Future<void> _buscarHistorico() async {
+  Future<void> _buscarHistorico({bool mostrarFeedbackSucesso = false}) async {
     final prefs = await SharedPreferences.getInstance();
+    bool tinhaCache = false;
 
     // 1. Tentar carregar do cache primeiro para dar agilidade visual
     final cacheJson = prefs.getString(_cacheKey);
-    if (cacheJson != null && _historico.isEmpty) {
-      setState(() {
-        _historico = jsonDecode(cacheJson);
-        _carregando = false;
-      });
+    if (cacheJson != null) {
+      tinhaCache = true;
+      if (_historico.isEmpty) {
+        try {
+          setState(() {
+            _historico = jsonDecode(cacheJson);
+            _carregando = false;
+          });
+        } catch (e) {
+          // Cache corrompido: ignora e segue para buscar do servidor
+          debugPrint("Erro ao ler cache do histórico: $e");
+        }
+      }
     }
 
     // 2. Se tiver internet, busca do banco e atualiza o cache
     if (await _temInternet()) {
       try {
         final user = supabase.auth.currentUser;
-        if (user == null) return;
+        if (user == null) {
+          if (mounted) setState(() => _carregando = false);
+          return;
+        }
 
         final response = await supabase
             .from('contribuicoes')
@@ -89,13 +105,44 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
 
         // Salva no SharedPreferences para a próxima vez
         await prefs.setString(_cacheKey, jsonEncode(novosDados));
+
+        if (mostrarFeedbackSucesso && mounted) {
+          _mostrarSnackBar("Histórico atualizado.");
+        }
       } catch (e) {
         debugPrint("Erro ao buscar histórico: $e");
-        setState(() => _carregando = false);
+        if (mounted) setState(() => _carregando = false);
+
+        if (mounted) {
+          if (tinhaCache) {
+            // Já existe algo na tela; um aviso discreto basta
+            _mostrarSnackBar(
+              "Não foi possível atualizar o histórico. Exibindo dados salvos.",
+              erro: true,
+            );
+          } else {
+            // Tela ficaria vazia sem explicação nenhuma; nesse caso um diálogo é melhor
+            _mostrarDialogo(
+              "Erro",
+              "Não foi possível carregar seu histórico agora. Tente novamente mais tarde.",
+            );
+          }
+        }
       }
     } else {
-      // Caso esteja totalmente offline e não tenha cache
-      setState(() => _carregando = false);
+      // Caso esteja totalmente offline
+      if (mounted) setState(() => _carregando = false);
+
+      if (mounted) {
+        if (tinhaCache) {
+          _mostrarSnackBar("Você está offline. Exibindo dados salvos.");
+        } else {
+          _mostrarDialogo(
+            "Sem Conexão",
+            "Você está offline e ainda não há dados salvos para exibir.",
+          );
+        }
+      }
     }
   }
 
@@ -111,19 +158,39 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
     }
   }
 
-  // Função para mostrar o diálogo
-  void _mostrarDialogo(String titulo, String mensagem) {
-    showDialog(
+  // Função para mostrar o diálogo. Retorna o Future do showDialog para
+  // permitir aguardar o fechamento quando necessário, e aceita botões
+  // personalizados.
+  Future<void> _mostrarDialogo(
+    String titulo,
+    String mensagem, {
+    List<Widget>? botoesPersonalizados,
+  }) {
+    return showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(titulo),
         content: Text(mensagem),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("OK"),
-          ),
-        ],
+        actions:
+            botoesPersonalizados ??
+            [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("OK"),
+              ),
+            ],
+      ),
+    );
+  }
+
+  void _mostrarSnackBar(String mensagem, {bool erro = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(mensagem),
+        backgroundColor: erro ? Colors.red.shade600 : null,
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -186,12 +253,7 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_cacheKey, jsonEncode(_historico));
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Registro excluído com sucesso."),
-          backgroundColor: Colors.green,
-        ),
-      );
+      _mostrarSnackBar("Registro excluído com sucesso.");
     } catch (e) {
       debugPrint("Erro ao excluir registro: $e");
       if (mounted) {
@@ -210,6 +272,15 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
         title: const Text("Histórico"),
         scrolledUnderElevation: 0,
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: "Atualizar",
+            onPressed: _carregando
+                ? null
+                : () => _buscarHistorico(mostrarFeedbackSucesso: true),
+          ),
+        ],
       ),
       body: _carregando
           ? const Center(child: CircularProgressIndicator())
@@ -233,200 +304,221 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
                       "Nenhum registro encontrado.",
                       style: TextStyle(fontSize: 18, color: Colors.grey),
                     ),
+                    const SizedBox(height: 12),
+                    TextButton.icon(
+                      onPressed: () =>
+                          _buscarHistorico(mostrarFeedbackSucesso: true),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text("Tentar novamente"),
+                    ),
                   ],
                 ),
               ),
             )
-          : Column(
-              // Adicionado Column para empilhar o texto e a lista
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: Text(
-                    "Histórico das suas vagas registradas:",
-                    style: TextStyle(fontSize: 16),
+          : RefreshIndicator(
+              onRefresh: () => _buscarHistorico(mostrarFeedbackSucesso: true),
+              child: Column(
+                // Adicionado Column para empilhar o texto e a lista
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    child: Text(
+                      "Histórico das suas vagas registradas:",
+                      style: TextStyle(fontSize: 16),
+                    ),
                   ),
-                ),
-                Expanded(
-                  // Ocupa o restante do espaço da tela
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _historico.length,
-                    itemBuilder: (context, index) {
-                      final item = _historico[index];
+                  Expanded(
+                    // Ocupa o restante do espaço da tela
+                    child: ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _historico.length,
+                      itemBuilder: (context, index) {
+                        final item = _historico[index];
 
-                      // Sua View retorna 'vagas' como uma lista de objetos JSON
-                      final List<dynamic> vagas = item['vagas'] is List
-                          ? item['vagas']
-                          : [];
+                        // Sua View retorna 'vagas' como uma lista de objetos JSON
+                        final List<dynamic> vagas = item['vagas'] is List
+                            ? item['vagas']
+                            : [];
 
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 16),
-                        child: ExpansionTile(
-                          collapsedShape: const Border(),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          title: Text(
-                            "${item['logradouro']}, ${item['numero']}",
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text(
-                            "${item['bairro']} - ${item['cidade']}",
-                          ),
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    "Referência: ${item['referencia'] != null && item['referencia'].isNotEmpty ? item['referencia'] : 'Não registrada'}",
-                                  ),
-                                  const Divider(),
-                                  ...vagas.map((v) {
-                                    // Se a vaga for nula (LEFT JOIN sem dados), ignoramos
-                                    if (v['tipo_vaga'] == null)
-                                      return const SizedBox();
-
-                                    return ListTile(
-                                      contentPadding: EdgeInsets.zero,
-                                      // Leading: Mostra o ícone do tipo de vaga
-                                      leading: SizedBox(
-                                        width: 32,
-                                        height: 32,
-                                        child: _getCustomImage(v['tipo_vaga']),
-                                      ),
-                                      title: Text(v['tipo_vaga']),
-                                      // Trailing: Mostra a foto da vaga vinda do banco e a quantidade
-                                      trailing: Wrap(
-                                        crossAxisAlignment:
-                                            WrapCrossAlignment.center,
-                                        spacing: 12,
-                                        children: [
-                                          Text(
-                                            "${v['quantidade']} vagas",
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          // Widget de imagem da vaga
-                                          if (v['foto_url'] != null)
-                                            ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                              child: Image.network(
-                                                v['foto_url'],
-                                                width: 45,
-                                                height: 45,
-                                                fit: BoxFit.cover,
-                                                // Tratamento de erro caso o link expire ou falhe
-                                                errorBuilder:
-                                                    (
-                                                      context,
-                                                      error,
-                                                      stackTrace,
-                                                    ) => const Icon(
-                                                      Icons.broken_image,
-                                                      size: 20,
-                                                    ),
-                                                loadingBuilder:
-                                                    (
-                                                      context,
-                                                      child,
-                                                      loadingProgress,
-                                                    ) {
-                                                      if (loadingProgress ==
-                                                          null) {
-                                                        return child;
-                                                      }
-                                                      return const SizedBox(
-                                                        width: 20,
-                                                        height: 20,
-                                                        child:
-                                                            CircularProgressIndicator(
-                                                              strokeWidth: 2,
-                                                            ),
-                                                      );
-                                                    },
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    );
-                                  }).toList(),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      TextButton.icon(
-                                        onPressed: () async {
-                                          if (!(await _temInternet())) {
-                                            if (mounted) {
-                                              _mostrarDialogo(
-                                                "Sem Conexão",
-                                                "Parece que você está offline. Verifique sua conexão com a internet para editar este registro.",
-                                              );
-                                            }
-                                            return;
-                                          }
-                                          await Navigator.pushNamed(
-                                            context,
-                                            '/registro_vagas',
-                                            arguments: item,
-                                          );
-                                          _buscarHistorico();
-                                        },
-                                        icon: const Icon(Icons.edit, size: 20),
-                                        label: const Text("Editar registro"),
-                                        style: TextButton.styleFrom(
-                                          foregroundColor: Colors.blue[700],
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 8,
-                                          ),
-                                        ),
-                                      ),
-                                      TextButton.icon(
-                                        onPressed: () =>
-                                            _confirmarExclusao(item),
-                                        icon: const Icon(
-                                          Icons.delete_outline,
-                                          size: 20,
-                                        ),
-                                        label: const Text("Excluir registro"),
-                                        style: TextButton.styleFrom(
-                                          foregroundColor: Colors.red[700],
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 8,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          child: ExpansionTile(
+                            collapsedShape: const Border(),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            title: Text(
+                              "${item['logradouro']}, ${item['numero']}",
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                          ],
-                        ),
-                      );
-                    },
+                            subtitle: Text(
+                              "${item['bairro']} - ${item['cidade']}",
+                            ),
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      "Referência: ${item['referencia'] != null && item['referencia'].isNotEmpty ? item['referencia'] : 'Não registrada'}",
+                                    ),
+                                    const Divider(),
+                                    ...vagas.map((v) {
+                                      // Se a vaga for nula (LEFT JOIN sem dados), ignoramos
+                                      if (v['tipo_vaga'] == null) {
+                                        return const SizedBox();
+                                      }
+
+                                      return ListTile(
+                                        contentPadding: EdgeInsets.zero,
+                                        // Leading: Mostra o ícone do tipo de vaga
+                                        leading: SizedBox(
+                                          width: 32,
+                                          height: 32,
+                                          child: _getCustomImage(
+                                            v['tipo_vaga'],
+                                          ),
+                                        ),
+                                        title: Text(v['tipo_vaga']),
+                                        // Trailing: Mostra a foto da vaga vinda do banco e a quantidade
+                                        trailing: Wrap(
+                                          crossAxisAlignment:
+                                              WrapCrossAlignment.center,
+                                          spacing: 12,
+                                          children: [
+                                            Text(
+                                              "${v['quantidade']} vagas",
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            // Widget de imagem da vaga
+                                            if (v['foto_url'] != null)
+                                              ClipRRect(
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
+                                                child: Image.network(
+                                                  v['foto_url'],
+                                                  width: 45,
+                                                  height: 45,
+                                                  fit: BoxFit.cover,
+                                                  // Tratamento de erro caso o link expire ou falhe
+                                                  errorBuilder:
+                                                      (
+                                                        context,
+                                                        error,
+                                                        stackTrace,
+                                                      ) => const Icon(
+                                                        Icons.broken_image,
+                                                        size: 20,
+                                                      ),
+                                                  loadingBuilder:
+                                                      (
+                                                        context,
+                                                        child,
+                                                        loadingProgress,
+                                                      ) {
+                                                        if (loadingProgress ==
+                                                            null) {
+                                                          return child;
+                                                        }
+                                                        return const SizedBox(
+                                                          width: 20,
+                                                          height: 20,
+                                                          child:
+                                                              CircularProgressIndicator(
+                                                                strokeWidth: 2,
+                                                              ),
+                                                        );
+                                                      },
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      );
+                                    }).toList(),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        TextButton.icon(
+                                          onPressed: () async {
+                                            if (!(await _temInternet())) {
+                                              if (mounted) {
+                                                _mostrarDialogo(
+                                                  "Sem Conexão",
+                                                  "Parece que você está offline. Verifique sua conexão com a internet para editar este registro.",
+                                                );
+                                              }
+                                              return;
+                                            }
+                                            await Navigator.pushNamed(
+                                              context,
+                                              '/registro_vagas',
+                                              arguments: item,
+                                            );
+                                            _buscarHistorico();
+                                          },
+                                          icon: const Icon(
+                                            Icons.edit,
+                                            size: 20,
+                                          ),
+                                          label: const Text("Editar registro"),
+                                          style: TextButton.styleFrom(
+                                            foregroundColor: Colors.blue[700],
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 8,
+                                            ),
+                                          ),
+                                        ),
+                                        TextButton.icon(
+                                          onPressed: () =>
+                                              _confirmarExclusao(item),
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                            size: 20,
+                                          ),
+                                          label: const Text(
+                                            "Excluir registro",
+                                          ),
+                                          style: TextButton.styleFrom(
+                                            foregroundColor: Colors.red[700],
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 8,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                   ),
-                ),
-                Container(
-                  width: double.infinity, // Largura 100%
-                  padding: const EdgeInsets.all(10),
-                  alignment: Alignment
-                      .centerLeft, // Alinha a logo à esquerda (como estava no Positioned)
-                  child: Image.asset(
-                    'assets/images/titulo.webp',
-                    width: 150,
-                    fit: BoxFit.contain,
+                  Container(
+                    width: double.infinity, // Largura 100%
+                    padding: const EdgeInsets.all(10),
+                    alignment: Alignment
+                        .centerLeft, // Alinha a logo à esquerda (como estava no Positioned)
+                    child: Image.asset(
+                      'assets/images/titulo.webp',
+                      width: 150,
+                      fit: BoxFit.contain,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
       floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,

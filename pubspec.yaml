@@ -53,6 +53,7 @@ dependencies:
   flutter_map_animations: ^0.10.0
   url_launcher: ^6.3.0
   google_generative_ai: ^0.4.7
+  http: ^1.2.0
 
 dev_dependencies:
   flutter_test:

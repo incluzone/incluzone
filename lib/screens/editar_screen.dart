@@ -26,6 +26,7 @@ class _EditarScreenState extends State<EditarScreen> {
   bool _emailAlteradoPendente = false;
   String _ultimoEmailTentaAlterar = "";
   bool _carregando = false;
+  bool _excluindo = false;
   File? _imagemSelecionada;
   String? _urlImagemExistente;
   final ImagePicker _picker = ImagePicker();
@@ -49,6 +50,7 @@ class _EditarScreenState extends State<EditarScreen> {
           user.newEmail == null &&
           _emailAlteradoPendente) {
         if (mounted) {
+          _timer?.cancel();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("E-mail confirmado com sucesso!")),
           );
@@ -60,6 +62,7 @@ class _EditarScreenState extends State<EditarScreen> {
 
   @override
   void dispose() {
+    _timer?.cancel();
     nome.dispose();
     email.dispose();
     senha.dispose();
@@ -82,33 +85,48 @@ class _EditarScreenState extends State<EditarScreen> {
     // Salva no disco
     await prefs.setInt('nivel_zoom', _nivelZoom);
 
-    // ESTA É A PARTE QUE FALTA:
     // Acessa o estado do MyApp através da chave global e chama o método de atualização
     myAppKey.currentState?.atualizarEscala(_nivelZoom);
   }
 
   Future<void> _selecionarImagem() async {
-    final XFile? imagem = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 70, // Compacta um pouco para não pesar no Supabase
-    );
+    try {
+      final XFile? imagem = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 70, // Compacta um pouco para não pesar no Supabase
+      );
 
-    if (imagem != null) {
-      setState(() {
-        _imagemSelecionada = File(imagem.path);
-      });
+      if (imagem != null) {
+        setState(() {
+          _imagemSelecionada = File(imagem.path);
+        });
+        _mostrarSnackBar("Foto selecionada com sucesso.");
+      }
+    } catch (e) {
+      if (mounted) {
+        _mostrarDialogo(
+          "Erro",
+          "Não foi possível selecionar a imagem. Tente novamente.",
+        );
+      }
     }
   }
 
   Future<void> _carregarConfiguracoesIniciais() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
-    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
+      });
+    } catch (e) {
+      // Falha ao carregar preferências não é crítica; a tela segue com o padrão.
+      debugPrint("Erro ao carregar configurações: $e");
+    }
   }
 
   Future<void> _carregarDadosUsuario() async {
     setState(() => _carregando = true);
+    bool carregouAlgumDado = false;
 
     try {
       final response = await Supabase.instance.client.auth.getUser();
@@ -125,6 +143,7 @@ class _EditarScreenState extends State<EditarScreen> {
             _emailAlteradoPendente = false;
           }
         });
+        carregouAlgumDado = true;
       }
     } catch (e) {
       final user = Supabase.instance.client.auth.currentUser;
@@ -134,9 +153,19 @@ class _EditarScreenState extends State<EditarScreen> {
           email.text = user.email ?? '';
           _urlImagemExistente = user.userMetadata?['avatar_url'];
         });
+        carregouAlgumDado = true;
       }
     } finally {
       if (mounted) setState(() => _carregando = false);
+    }
+
+    // Se nem o servidor nem o cache local tinham os dados, avisa o usuário
+    if (!carregouAlgumDado && mounted) {
+      _mostrarDialogo(
+        "Erro",
+        "Não foi possível carregar os dados do seu perfil. "
+            "Verifique sua conexão e tente novamente mais tarde.",
+      );
     }
   }
 
@@ -149,12 +178,18 @@ class _EditarScreenState extends State<EditarScreen> {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (_segundosRestantes == 0) {
         timer.cancel();
-        // Opcional: resetar estado pendente se o tempo acabar sem confirmação
+        // Se o tempo acabou sem confirmação, avisamos o usuário
+        if (_emailAlteradoPendente && mounted) {
+          _mostrarSnackBar(
+            "O tempo para confirmar o novo e-mail expirou. "
+            "Você pode tentar novamente quando quiser.",
+          );
+        }
       } else {
         if (mounted) {
           setState(() => _segundosRestantes--);
 
-          // A cada 5 segundos, verificamos no Supabase se o email foi confirmado
+          // A cada 3 segundos, verificamos no Supabase se o email foi confirmado
           if (_segundosRestantes % 3 == 0 && _emailAlteradoPendente) {
             try {
               // Força a atualização da sessão e busca dados do servidor
@@ -187,12 +222,12 @@ class _EditarScreenState extends State<EditarScreen> {
   }
 
   Future<bool> _temInternet() async {
-    final connectivityResult = await Connectivity().checkConnectivity();
-    if (connectivityResult.contains(ConnectivityResult.none)) {
-      return false;
-    }
-    // Opcional: Checagem real de DNS
     try {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      if (connectivityResult.contains(ConnectivityResult.none)) {
+        return false;
+      }
+      // Opcional: Checagem real de DNS
       final result = await InternetAddress.lookup('google.com');
       return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
     } catch (_) {
@@ -200,18 +235,39 @@ class _EditarScreenState extends State<EditarScreen> {
     }
   }
 
-  void _mostrarDialogo(String titulo, String mensagem) {
-    showDialog(
+  // Agora retorna o Future do showDialog, permitindo aguardar o fechamento
+  // do diálogo quando necessário (ex: antes de navegar), e aceita botões
+  // personalizados.
+  Future<void> _mostrarDialogo(
+    String titulo,
+    String mensagem, {
+    List<Widget>? botoesPersonalizados,
+  }) {
+    return showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: Text(titulo),
         content: Text(mensagem),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("OK"),
-          ),
-        ],
+        actions:
+            botoesPersonalizados ??
+            [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("OK"),
+              ),
+            ],
+      ),
+    );
+  }
+
+  void _mostrarSnackBar(String mensagem, {bool erro = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(mensagem),
+        backgroundColor: erro ? Colors.red.shade600 : null,
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -269,13 +325,25 @@ class _EditarScreenState extends State<EditarScreen> {
       String? novaUrlAvatar = _urlImagemExistente;
 
       if (_imagemSelecionada != null) {
-        novaUrlAvatar = await _supabaseService.atualizarFotoPerfil(
-          _imagemSelecionada!,
-        );
+        try {
+          novaUrlAvatar = await _supabaseService.atualizarFotoPerfil(
+            _imagemSelecionada!,
+          );
+        } catch (e) {
+          // Falha no upload da foto não deve impedir a atualização dos
+          // demais dados, mas o usuário precisa saber.
+          setState(() => _carregando = false);
+          await _mostrarDialogo(
+            "Aviso",
+            "Não foi possível atualizar sua foto de perfil agora. "
+                "Os demais dados serão salvos normalmente.",
+          );
+          setState(() => _carregando = true);
+          novaUrlAvatar = _urlImagemExistente;
+        }
       }
 
       final auth = Supabase.instance.client.auth;
-      final userAntes = auth.currentUser;
       final emailNovo = email.text.trim();
 
       final Map<String, dynamic> userMetadata = {'name': nome.text.trim()};
@@ -308,7 +376,7 @@ class _EditarScreenState extends State<EditarScreen> {
         });
         _iniciarTimer();
 
-        _mostrarDialogo(
+        await _mostrarDialogo(
           "Confirme seu e-mail",
           "Para concluir a alteração para $emailNovo, você deve clicar no link enviado para o seu e-mail.",
         );
@@ -331,13 +399,15 @@ class _EditarScreenState extends State<EditarScreen> {
       }
       _mostrarDialogo("Erro de autenticação", mensagemErro);
     } catch (e) {
-      _mostrarDialogo("Erro", "Falha ao atualizar.");
+      _mostrarDialogo("Erro", "Falha ao atualizar. Tente novamente.");
     } finally {
       if (mounted) setState(() => _carregando = false);
     }
   }
 
   Future<void> _excluirConta() async {
+    if (_excluindo) return;
+
     if (!(await _temInternet())) {
       if (mounted) {
         _mostrarDialogo(
@@ -370,6 +440,8 @@ class _EditarScreenState extends State<EditarScreen> {
 
     if (confirmar != true) return;
 
+    setState(() => _excluindo = true);
+
     try {
       // 🔥 chama Edge Function (você precisa criar no Supabase)
       final user = Supabase.instance.client.auth.currentUser;
@@ -383,9 +455,22 @@ class _EditarScreenState extends State<EditarScreen> {
 
       if (!mounted) return;
 
+      // Mostra a confirmação e aguarda o usuário fechar o diálogo antes de navegar
+      await _mostrarDialogo(
+        "Conta excluída",
+        "Sua conta foi excluída com sucesso.",
+      );
+
+      if (!mounted) return;
       Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
     } catch (e) {
-      _mostrarDialogo("Erro", "Não foi possível excluir a conta: $e");
+      debugPrint("Erro ao excluir conta: $e");
+      _mostrarDialogo(
+        "Erro",
+        "Não foi possível excluir a conta agora. Tente novamente mais tarde.",
+      );
+    } finally {
+      if (mounted) setState(() => _excluindo = false);
     }
   }
 
@@ -415,6 +500,7 @@ class _EditarScreenState extends State<EditarScreen> {
                           _imagemSelecionada = null;
                           _urlImagemExistente = null;
                         });
+                        _mostrarSnackBar("Foto removida.");
                       } else {
                         // Se estiver no avatar padrão, abre o seletor de fotos
                         _selecionarImagem();
@@ -540,15 +626,24 @@ class _EditarScreenState extends State<EditarScreen> {
 
                 // 🔴 BOTÃO EXCLUIR CONTA
                 TextButton(
-                  onPressed: _excluirConta,
+                  onPressed: _excluindo ? null : _excluirConta,
                   style: TextButton.styleFrom(foregroundColor: Colors.red),
-                  child: const Text(
-                    "Excluir conta",
-                    style: TextStyle(
-                      color: Colors.red,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: _excluindo
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation(Colors.red),
+                          ),
+                        )
+                      : const Text(
+                          "Excluir conta",
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
               ],
             ),

@@ -26,6 +26,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
   bool _emailEnviado = false;
   String _ultimoEmailTentado = ""; // Para comparar se o e-mail mudou
   bool _carregando = false;
+  bool _carregandoGoogle = false;
   File? _imagemSelecionada;
   final ImagePicker _picker = ImagePicker();
 
@@ -48,7 +49,12 @@ class _CadastroScreenState extends State<CadastroScreen> {
         _navegou = true;
 
         // Se o usuário veio pelo Google, atualiza o nome padrão do Google
-        await service.garantirPerfilGoogle();
+        try {
+          await service.garantirPerfilGoogle();
+        } catch (e) {
+          // Não bloqueia o fluxo, apenas registra o problema
+          print("Erro ao garantir perfil do Google: $e");
+        }
 
         // NOVIDADE: Se o usuário selecionou uma foto no formulário de cadastro,
         // fazemos o upload dela agora que ele está autenticado com sucesso.
@@ -56,8 +62,17 @@ class _CadastroScreenState extends State<CadastroScreen> {
           try {
             await service.uploadFotoPerfil(_imagemSelecionada!);
           } catch (e) {
-            // Se falhar o upload da foto, ainda assim deixa o usuário entrar
+            // Se falhar o upload da foto, ainda assim deixa o usuário entrar,
+            // mas avisamos para que ele saiba que precisa tentar novamente depois.
             print("Erro ao subir foto no pós-cadastro: $e");
+            if (mounted) {
+              await _mostrarDialogo(
+                context,
+                "Aviso",
+                "Não foi possível enviar sua foto de perfil agora. "
+                    "Você poderá adicioná-la depois, no seu perfil.",
+              );
+            }
           }
         }
 
@@ -70,6 +85,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
 
   @override
   void dispose() {
+    _timer?.cancel();
     authSub.cancel();
     nome.dispose();
     email.dispose();
@@ -92,28 +108,43 @@ class _CadastroScreenState extends State<CadastroScreen> {
     // Salva no disco
     await prefs.setInt('nivel_zoom', _nivelZoom);
 
-    // ESTA É A PARTE QUE FALTA:
     // Acessa o estado do MyApp através da chave global e chama o método de atualização
     myAppKey.currentState?.atualizarEscala(_nivelZoom);
   }
 
   Future<void> _carregarConfiguracoesIniciais() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
-    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
+      });
+    } catch (e) {
+      // Falha ao carregar preferências não é crítica; a tela segue com o padrão.
+      print("Erro ao carregar configurações: $e");
+    }
   }
 
   Future<void> _selecionarImagem() async {
-    final XFile? imagem = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 70, // Compacta um pouco para não pesar no Supabase
-    );
+    try {
+      final XFile? imagem = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 70, // Compacta um pouco para não pesar no Supabase
+      );
 
-    if (imagem != null) {
-      setState(() {
-        _imagemSelecionada = File(imagem.path);
-      });
+      if (imagem != null) {
+        setState(() {
+          _imagemSelecionada = File(imagem.path);
+        });
+        _mostrarSnackBar("Foto selecionada com sucesso.");
+      }
+    } catch (e) {
+      if (mounted) {
+        _mostrarDialogo(
+          context,
+          "Erro",
+          "Não foi possível selecionar a imagem. Tente novamente.",
+        );
+      }
     }
   }
 
@@ -139,12 +170,12 @@ class _CadastroScreenState extends State<CadastroScreen> {
   }
 
   Future<bool> _temInternet() async {
-    final connectivityResult = await Connectivity().checkConnectivity();
-    if (connectivityResult.contains(ConnectivityResult.none)) {
-      return false;
-    }
-    // Opcional: Checagem real de DNS
     try {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      if (connectivityResult.contains(ConnectivityResult.none)) {
+        return false;
+      }
+      // Opcional: Checagem real de DNS
       final result = await InternetAddress.lookup('google.com');
       return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
     } catch (_) {
@@ -152,18 +183,39 @@ class _CadastroScreenState extends State<CadastroScreen> {
     }
   }
 
-  void _mostrarDialogo(BuildContext context, String titulo, String mensagem) {
-    showDialog(
+  // Agora retorna o Future do showDialog, permitindo que o chamador
+  // aguarde o fechamento do diálogo quando necessário (ex: antes de navegar).
+  Future<void> _mostrarDialogo(
+    BuildContext context,
+    String titulo,
+    String mensagem, {
+    List<Widget>? botoesPersonalizados,
+  }) {
+    return showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: Text(titulo),
         content: Text(mensagem),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text("OK"),
-          ),
-        ],
+        actions:
+            botoesPersonalizados ??
+            [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text("OK"),
+              ),
+            ],
+      ),
+    );
+  }
+
+  void _mostrarSnackBar(String mensagem, {bool erro = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(mensagem),
+        backgroundColor: erro ? Colors.red.shade600 : null,
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -222,7 +274,11 @@ class _CadastroScreenState extends State<CadastroScreen> {
     }
 
     if (!(await _temInternet())) {
-      _mostrarDialogo(context, "Sem Conexão", "Verifique sua internet.");
+      _mostrarDialogo(
+        context,
+        "Sem Conexão",
+        "Verifique sua internet e tente novamente.",
+      );
       return;
     }
 
@@ -265,15 +321,14 @@ class _CadastroScreenState extends State<CadastroScreen> {
               type: OtpType.signup,
               email: emailAtual,
             );
-            _mostrarDialogo(
-              context,
-              "E-mail Reenviado",
-              "Confira sua caixa de entrada.",
-            );
+            _mostrarSnackBar("E-mail reenviado. Confira sua caixa de entrada.");
           }
 
           setState(() => _carregando = false);
           _iniciarTimer();
+        } on AuthException catch (e) {
+          setState(() => _carregando = false);
+          _tratarErroAuth(e);
         } catch (e) {
           setState(() => _carregando = false);
           // Trate o erro de "User already registered" aqui se o usuário
@@ -290,7 +345,11 @@ class _CadastroScreenState extends State<CadastroScreen> {
       _tratarErroAuth(e);
     } catch (e) {
       setState(() => _carregando = false);
-      _mostrarDialogo(context, "Erro", "Falha na operação.");
+      _mostrarDialogo(
+        context,
+        "Erro",
+        "Falha na operação. Tente novamente em instantes.",
+      );
     } finally {
       // Garantia final de que o load sairá da tela
       if (mounted && _carregando) setState(() => _carregando = false);
@@ -304,9 +363,53 @@ class _CadastroScreenState extends State<CadastroScreen> {
         context,
         "Conta já existe",
         "Este e-mail já está cadastrado.",
+        botoesPersonalizados: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("Corrigir e-mail"),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pushReplacementNamed(context, '/login');
+            },
+            child: Text("Ir para login"),
+          ),
+        ],
       );
     } else {
       _mostrarDialogo(context, "Erro", e.message);
+    }
+  }
+
+  Future<void> _entrarComGoogle() async {
+    if (_carregandoGoogle) return;
+
+    if (!(await _temInternet())) {
+      _mostrarDialogo(
+        context,
+        "Sem Conexão",
+        "Verifique sua internet e tente novamente.",
+      );
+      return;
+    }
+
+    setState(() => _carregandoGoogle = true);
+    try {
+      await Supabase.instance.client.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: 'io.supabase.flutter://login-callback',
+      );
+    } on AuthException catch (e) {
+      _mostrarDialogo(context, "Erro", e.message);
+    } catch (e) {
+      _mostrarDialogo(
+        context,
+        "Erro",
+        "Não foi possível continuar com o Google. Tente novamente.",
+      );
+    } finally {
+      if (mounted) setState(() => _carregandoGoogle = false);
     }
   }
 
@@ -333,6 +436,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
                         setState(() {
                           _imagemSelecionada = null;
                         });
+                        _mostrarSnackBar("Foto removida.");
                       } else {
                         // Se não tem imagem, abre o seletor
                         _selecionarImagem();
@@ -477,18 +581,23 @@ class _CadastroScreenState extends State<CadastroScreen> {
 
                 // BOTÃO GOOGLE (AGORA NO TOPO)
                 ElevatedButton.icon(
-                  icon: Image.asset(
-                    'assets/images/google_logo.webp',
-                    width: 24,
-                    height: 24,
+                  icon: _carregandoGoogle
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Image.asset(
+                          'assets/images/google_logo.webp',
+                          width: 24,
+                          height: 24,
+                        ),
+                  label: Text(
+                    _carregandoGoogle
+                        ? "Conectando..."
+                        : "Continuar com Google",
                   ),
-                  label: const Text("Continuar com Google"),
-                  onPressed: () async {
-                    await Supabase.instance.client.auth.signInWithOAuth(
-                      OAuthProvider.google,
-                      redirectTo: 'io.supabase.flutter://login-callback',
-                    );
-                  },
+                  onPressed: _carregandoGoogle ? null : _entrarComGoogle,
                 ),
               ],
             ),
