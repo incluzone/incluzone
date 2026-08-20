@@ -126,6 +126,11 @@ class _HomeScreenState extends State<HomeScreen>
   List<Map<String, dynamic>> _todosOsLocais = [];
   bool _menuAberto = false;
   int _nivelZoom = 0;
+  // Controla o texto do campo de digitação
+// Guardam o controle e o texto da pesquisa
+final TextEditingController _pesquisaController = TextEditingController();
+  // Guarda o texto que a pessoa digitou
+String _textoPesquisa = '';
 
   // ---------------------------------------------------------------------
   // PESQUISA DE LUGARES (LocationIQ)
@@ -169,6 +174,16 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
+@override
+void dispose() {
+  WidgetsBinding.instance.removeObserver(this);
+  _positionStream?.cancel();
+  _cacheStore.close();
+  
+  _pesquisaController.dispose(); // Limpa o controller da barra de pesquisa
+
+  if (_realtimeSubscription != null) {
+    Supabase.instance.client.removeChannel(_realtimeSubscription!);
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -182,6 +197,8 @@ class _HomeScreenState extends State<HomeScreen>
     _focusPesquisa.dispose();
     super.dispose();
   }
+  super.dispose();
+}
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -945,24 +962,44 @@ class _HomeScreenState extends State<HomeScreen>
     _aplicarFiltro();
   }
 
-  void _aplicarFiltro() {
-    if (!mounted) return;
-    // Filtra a lista bruta baseada nos tipos selecionados no Set
-    final locaisFiltrados = _todosOsLocais
-        .map((local) {
-          final novasVagas = (local['vagas'] as List)
-              .where((v) => _filtrosAtivos.contains(v['tipo_vaga']))
-              .toList();
+void _aplicarFiltro() {
+  if (!mounted) return;
 
-          return {...local, 'vagas': novasVagas};
-        })
-        .where((local) => (local['vagas'] as List).isNotEmpty)
+  final locaisFiltrados = _todosOsLocais.map((local) {
+    // 1. Filtra as vagas pelo tipo selecionado
+    final novasVagas = (local['vagas'] as List)
+        .where((v) => _filtrosAtivos.contains(v['tipo_vaga']))
         .toList();
+    return {...local, 'vagas': novasVagas};
+  }).where((local) {
+    bool temVagas = (local['vagas'] as List).isNotEmpty;
 
-    setState(() {
-      _markers = gerarMarcadores(locaisFiltrados);
-    });
-  }
+    // 2. Compara o texto digitado com a referência e o endereço
+    String referencia = (local['referencia'] ?? '').toString().toLowerCase();
+    String endereco = (local['endereco'] ?? '').toString().toLowerCase();
+    String busca = _textoPesquisa.trim().toLowerCase();
+
+    bool combinaComPesquisa = busca.isEmpty ||
+        referencia.contains(busca) ||
+        endereco.contains(busca);
+
+    return temVagas && combinaComPesquisa;
+  }).toList();
+
+  setState(() {
+    _markers = gerarMarcadores(locaisFiltrados);
+  });
+  // Se a pesquisa encontrou exatamente 1 lugar, anima o mapa até ele!
+if (_textoPesquisa.isNotEmpty && locaisFiltrados.length == 1) {
+  final umLocal = locaisFiltrados.first;
+  final lat = (umLocal['latitude'] as num).toDouble();
+  final lng = (umLocal['longitude'] as num).toDouble();
+  _animatedMapController.animateTo(
+    dest: LatLng(lat, lng),
+    zoom: 17.0,
+  );
+}
+}
 
   // Salva os filtros ativos no disco
   Future<void> _salvarFiltrosNoCache() async {
@@ -1922,15 +1959,6 @@ class _HomeScreenState extends State<HomeScreen>
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text(
-              nomeUsuario != null
-                  ? "Seja bem-vindo, $nomeUsuario!"
-                  : "Seja bem-vindo, visitante!",
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-          ),
           Expanded(
             child: Stack(
               children: [
@@ -2053,48 +2081,70 @@ class _HomeScreenState extends State<HomeScreen>
                     ],
                   ),
 
-                // Filtro (canto superior esquerdo) — some enquanto a pesquisa estiver aberta
-                if (!_pesquisaAberta)
-                  Positioned(top: 0, left: 0, child: _buildFiltroCustom()),
+// 1. BARRA DE PESQUISA (Fica no topo, na posição top: 16)
+Positioned(
+  top: 16,
+  left: 16,
+  right: 16,
+  child: Card(
+    elevation: 6,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(25),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: TextField(
+        controller: _pesquisaController,
+        onChanged: (texto) {
+          setState(() {
+            _textoPesquisa = texto;
+          });
+          _aplicarFiltro();
+        },
+        decoration: InputDecoration(
+          hintText: 'Pesquisar referência (ex: Farmácia, Loja X)...',
+          hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+          prefixIcon: const Icon(Icons.search, color: Colors.blueAccent),
+          suffixIcon: _textoPesquisa.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear, color: Colors.grey),
+                  onPressed: () {
+                    _pesquisaController.clear();
+                    setState(() {
+                      _textoPesquisa = '';
+                    });
+                    _aplicarFiltro();
+                  },
+                )
+              : null,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+      ),
+    ),
+  ),
+),
 
-                // Botão de pesquisa que se expande até virar a barra de busca
-                if (_mapReady) _buildBotaoPesquisaAnimado(context),
+// 2. FILTRO DE VAGAS (Mudou para top: 80 para ficar ABAIXO da barra)
+Positioned(
+  top: 80,
+  left: 0,
+  child: _buildFiltroCustom(),
+),
 
-                // Resultados da busca (aparecem com fade suave)
-                if (_pesquisaAberta) _buildResultadosPesquisaAnimados(context),
-
-                // Botão de centralizar na localização do usuário (canto inferior esquerdo)
-                if (_mapReady)
-                  Positioned(
-                    bottom: MediaQuery.of(context).padding.bottom + 16,
-                    left: 16,
-                    child: FloatingActionButton(
-                      heroTag: "btn_minha_localizacao",
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.blueAccent,
-                      elevation: 4,
-                      onPressed: _centralizarNoUsuario,
-                      child: const Icon(Icons.my_location),
-                    ),
-                  ),
-
-                if (!_mapReady)
-                  Container(
-                    color: Colors.white,
-                    child: const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          CircularProgressIndicator(),
-                          SizedBox(height: 16),
-                          Text(
-                            "Localizando...",
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+// 3. BOTÃO DE GPS (Mudou para top: 80 para alinhar com o filtro)
+if (_mapReady)
+  Positioned(
+    top: 80,
+    right: 16,
+    child: FloatingActionButton(
+      backgroundColor: Colors.white,
+      foregroundColor: Colors.blueAccent,
+      elevation: 4,
+      onPressed: _centralizarNoUsuario,
+      child: const Icon(Icons.my_location),
+    ),
+  ),
               ],
             ),
           ),
