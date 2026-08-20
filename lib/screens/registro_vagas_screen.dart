@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'pre_registro_vagas_screen.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path_provider/path_provider.dart' as path_provider;
@@ -39,6 +40,14 @@ class _VagaSelecionada {
 class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
   final supabase = Supabase.instance.client;
   late final TextEditingController referenciaController;
+
+  late final TextEditingController logradouroController;
+  late final TextEditingController numeroController;
+  late final TextEditingController bairroController;
+  late final TextEditingController cidadeController;
+  late final TextEditingController estadoController;
+  bool _editandoEndereco = false;
+
   RegistroPendente? dados;
   bool carregando = false;
   bool _salvandoEmAndamento = false;
@@ -58,6 +67,12 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
     super.initState();
     _carregarConfiguracoesIniciais();
     referenciaController = TextEditingController();
+
+    logradouroController = TextEditingController();
+    numeroController = TextEditingController();
+    bairroController = TextEditingController();
+    cidadeController = TextEditingController();
+    estadoController = TextEditingController();
   }
 
   @override
@@ -69,12 +84,33 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
       if (args is RegistroPendente) {
         // Fluxo normal: vindo da captura de endereço
         dados = args;
+        _preencherControllersDeEndereco();
         _verificarPontoExistente();
       } else if (args is Map<String, dynamic>) {
         // Fluxo Histórico: vindo da lista de registros já salvos
         _preencherComDadosDoHistorico(args);
+      } else {
+        // Nenhum dado válido foi passado para a tela; avisa o usuário
+        // assim que a UI estiver pronta, em vez de deixar a tela em branco.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _mostrarDialogo(
+              "Erro",
+              "Não foi possível carregar os dados deste registro. Volte e tente novamente.",
+            );
+          }
+        });
       }
     }
+  }
+
+  void _preencherControllersDeEndereco() {
+    if (dados == null) return;
+    logradouroController.text = dados!.logradouro ?? '';
+    numeroController.text = dados!.numero ?? '';
+    bairroController.text = dados!.bairro ?? '';
+    cidadeController.text = dados!.cidade ?? '';
+    estadoController.text = dados!.estado ?? '';
   }
 
   Future<void> _atualizarZoom(bool aumentar) async {
@@ -91,16 +127,66 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
     // Salva no disco
     await prefs.setInt('nivel_zoom', _nivelZoom);
 
-    // ESTA É A PARTE QUE FALTA:
     // Acessa o estado do MyApp através da chave global e chama o método de atualização
     myAppKey.currentState?.atualizarEscala(_nivelZoom);
   }
 
   Future<void> _carregarConfiguracoesIniciais() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
-    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
+      });
+    } catch (e) {
+      debugPrint("Erro ao carregar configurações: $e");
+    }
+  }
+
+  Future<bool> _temInternet() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    if (connectivityResult.contains(ConnectivityResult.none)) {
+      return false;
+    }
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _mostrarDialogo(
+    String titulo,
+    String mensagem, {
+    List<Widget>? botoesPersonalizados,
+  }) {
+    return showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(titulo),
+        content: Text(mensagem),
+        actions:
+            botoesPersonalizados ??
+            [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("OK"),
+              ),
+            ],
+      ),
+    );
+  }
+
+  void _mostrarSnackBar(String mensagem, {bool erro = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(mensagem),
+        backgroundColor: erro ? Colors.red.shade600 : null,
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   void _preencherComDadosDoHistorico(Map<String, dynamic> item) {
@@ -118,6 +204,8 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
         lat: (item['latitude'] as num).toDouble(),
         lng: (item['longitude'] as num).toDouble(),
       );
+
+      _preencherControllersDeEndereco();
 
       idLocalExistente = item['id'].toString();
       referenciaController.text = item['referencia'] ?? '';
@@ -145,6 +233,11 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
   @override
   void dispose() {
     referenciaController.dispose();
+    logradouroController.dispose();
+    numeroController.dispose();
+    bairroController.dispose();
+    cidadeController.dispose();
+    estadoController.dispose();
     super.dispose();
   }
 
@@ -157,6 +250,8 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
         width: 50,
         height: 50,
         fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) =>
+            const Icon(Icons.broken_image, size: 30),
       );
     }
     return const Icon(Icons.photo_library, color: Color.fromARGB(0, 0, 0, 0));
@@ -182,6 +277,14 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
         idLocalExistente = localExistente['id'].toString();
         referenciaController.text = localExistente['referencia'] ?? '';
 
+        logradouroController.text =
+            localExistente['logradouro'] ?? dados!.logradouro ?? '';
+        numeroController.text =
+            (localExistente['numero'] ?? dados!.numero ?? '').toString();
+        bairroController.text = localExistente['bairro'] ?? dados!.bairro ?? '';
+        cidadeController.text = localExistente['cidade'] ?? dados!.cidade ?? '';
+        estadoController.text = localExistente['estado'] ?? dados!.estado ?? '';
+
         if (localExistente['vagas'] != null) {
           setState(() {
             vagasParaRegistro = (localExistente['vagas'] as List).map((v) {
@@ -197,29 +300,46 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
               );
             }).toList();
           });
+
+          if (mounted) {
+            _mostrarSnackBar(
+              "Já existe um registro para este local. Os dados foram carregados para edição.",
+            );
+          }
         }
       }
     } catch (e) {
       debugPrint("Erro ao verificar ponto: $e");
+      if (mounted) {
+        _mostrarSnackBar(
+          "Não foi possível verificar se já existe um registro para este local.",
+          erro: true,
+        );
+      }
     } finally {
-      setState(() => carregando = false);
+      if (mounted) setState(() => carregando = false);
     }
   }
 
   Future<void> _limparRegistroPendente(String id) async {
-    final prefs = await SharedPreferences.getInstance();
-    final String? dadosString = prefs.getString('meus_registros');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? dadosString = prefs.getString('meus_registros');
 
-    if (dadosString != null) {
-      // 1. Pega a lista atual do celular
-      List<dynamic> dadosDecodificados = jsonDecode(dadosString);
+      if (dadosString != null) {
+        // 1. Pega a lista atual do celular
+        List<dynamic> dadosDecodificados = jsonDecode(dadosString);
 
-      // 2. Remove o item que acabou de ser salvo no banco de dados
-      dadosDecodificados.removeWhere((item) => item['id'] == id);
+        // 2. Remove o item que acabou de ser salvo no banco de dados
+        dadosDecodificados.removeWhere((item) => item['id'] == id);
 
-      // 3. Salva a lista atualizada (sem o item) de volta no celular
-      await prefs.setString('meus_registros', jsonEncode(dadosDecodificados));
-      print("Registro removido dos pendentes com sucesso.");
+        // 3. Salva a lista atualizada (sem o item) de volta no celular
+        await prefs.setString('meus_registros', jsonEncode(dadosDecodificados));
+        debugPrint("Registro removido dos pendentes com sucesso.");
+      }
+    } catch (e) {
+      // Não é crítico: o pior caso é o registro pendente reaparecer na lista.
+      debugPrint("Erro ao limpar registro pendente: $e");
     }
   }
 
@@ -244,13 +364,37 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
 
   Future<void> _selecionarFoto(_VagaSelecionada vaga) async {
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+    final XFile? pickedFile;
+    try {
+      pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    } catch (e) {
+      if (mounted) {
+        _mostrarDialogo(
+          "Erro",
+          "Não foi possível abrir a galeria de fotos. Tente novamente.",
+        );
+      }
+      return;
+    }
 
     if (pickedFile != null) {
       setState(() {
         vaga.validando = true; // Começa o carregamento específico deste card
         vaga.erroValidacao = null; // Limpa erros anteriores
       });
+
+      if (!(await _temInternet())) {
+        setState(() {
+          vaga.validando = false;
+          vaga.erroValidacao = "Sem conexão para validar a foto.";
+        });
+        _mostrarSnackBar(
+          "Verifique sua internet para validar a foto com IA.",
+          erro: true,
+        );
+        return;
+      }
 
       try {
         File arquivoOriginal = File(pickedFile.path);
@@ -275,11 +419,18 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
               vaga.foto = null; // Opcional: remove a foto se for inválida
             }
           });
+        } else {
+          setState(
+            () => vaga.erroValidacao = "Não foi possível processar a imagem.",
+          );
         }
       } catch (e) {
+        debugPrint("Erro ao processar/validar foto: $e");
         setState(() => vaga.erroValidacao = "Erro ao processar imagem");
       } finally {
-        setState(() => vaga.validando = false); // Para o carregamento do card
+        if (mounted) {
+          setState(() => vaga.validando = false); // Para o carregamento do card
+        }
       }
     }
   }
@@ -309,35 +460,51 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
     _salvandoEmAndamento = true;
 
     try {
-      if (vagasParaRegistro.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Selecione ao menos um tipo de vaga")),
+      if (dados == null) {
+        _mostrarDialogo(
+          "Erro",
+          "Dados do local não encontrados. Volte e tente novamente.",
         );
+        return;
+      }
+
+      if (vagasParaRegistro.isEmpty) {
+        _mostrarSnackBar("Selecione ao menos um tipo de vaga");
+        return;
+      }
+
+      if (logradouroController.text.trim().isEmpty ||
+          bairroController.text.trim().isEmpty ||
+          cidadeController.text.trim().isEmpty ||
+          estadoController.text.trim().isEmpty) {
+        _mostrarSnackBar("Endereço incompleto. Confira os campos.", erro: true);
         return;
       }
 
       // Validações ANTES de qualquer escrita no banco
       for (var v in vagasParaRegistro) {
         if (v.validando) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Aguarde a validação das imagens...")),
-          );
+          _mostrarSnackBar("Aguarde a validação das imagens...");
           return;
         }
         if (v.erroValidacao != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Corrija a foto de ${v.tipo} antes de salvar."),
-            ),
-          );
+          _mostrarSnackBar("Corrija a foto de ${v.tipo} antes de salvar.");
           return;
         }
         if (v.foto == null && v.urlFotoExistente == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("A foto para ${v.tipo} é obrigatória")),
-          );
+          _mostrarSnackBar("A foto para ${v.tipo} é obrigatória");
           return;
         }
+      }
+
+      if (!(await _temInternet())) {
+        if (mounted) {
+          _mostrarDialogo(
+            "Sem Conexão",
+            "Parece que você está offline. Verifique sua conexão com a internet e tente novamente.",
+          );
+        }
+        return;
       }
 
       setState(() => carregando = true);
@@ -352,11 +519,11 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
             'latitude': dados!.lat,
             'longitude': dados!.lng,
             'referencia': referenciaController.text,
-            'logradouro': dados!.logradouro,
-            'numero': dados!.numero,
-            'bairro': dados!.bairro,
-            'cidade': dados!.cidade,
-            'estado': dados!.estado,
+            'logradouro': logradouroController.text.trim(), // alterado
+            'numero': numeroController.text.trim(), // alterado
+            'bairro': bairroController.text.trim(), // alterado
+            'cidade': cidadeController.text.trim(), // alterado
+            'estado': estadoController.text.trim(), // alterado
             if (idLocalExistente == null) 'id_usuario_criador': userId,
           })
           .select()
@@ -391,7 +558,7 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
                 nomeArquivoAntigo,
               ]);
             } catch (e) {
-              print("Erro ao limpar arquivo antigo: $e");
+              debugPrint("Erro ao limpar arquivo antigo: $e");
             }
           }
 
@@ -438,10 +605,12 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
         );
       }
     } catch (e) {
+      debugPrint("Erro ao salvar registro de vagas: $e");
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Erro ao salvar: $e")));
+        _mostrarDialogo(
+          "Erro",
+          "Não foi possível salvar os dados agora. Tente novamente em instantes.",
+        );
       }
     } finally {
       _salvandoEmAndamento =
@@ -485,10 +654,6 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final enderecoCompleto = dados != null
-        ? "${dados!.logradouro}, ${dados!.numero}\n${dados!.bairro}\n${dados!.cidade} - ${dados!.estado}"
-        : "Dados não encontrados";
-
     return Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: AppBar(title: const Text("Registrar Vagas")),
@@ -500,18 +665,118 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    "Endereço Identificado:",
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "Endereço Identificado:",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          _editandoEndereco ? Icons.check_circle : Icons.edit,
+                          color: _editandoEndereco ? Colors.green : null,
+                        ),
+                        tooltip: _editandoEndereco
+                            ? "Confirmar alterações"
+                            : "Editar endereço",
+                        onPressed: () {
+                          if (_editandoEndereco) {
+                            // Saindo do modo edição: valida campos obrigatórios
+                            if (logradouroController.text.trim().isEmpty ||
+                                bairroController.text.trim().isEmpty ||
+                                cidadeController.text.trim().isEmpty ||
+                                estadoController.text.trim().isEmpty) {
+                              _mostrarSnackBar(
+                                "Preencha logradouro, bairro, cidade e estado.",
+                                erro: true,
+                              );
+                              return;
+                            }
+                          }
+                          setState(
+                            () => _editandoEndereco = !_editandoEndereco,
+                          );
+                        },
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    enderecoCompleto,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
+
+                  if (!_editandoEndereco)
+                    Text(
+                      "${logradouroController.text}, ${numeroController.text}\n"
+                      "${bairroController.text}\n"
+                      "${cidadeController.text} - ${estadoController.text}",
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    )
+                  else
+                    Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: TextField(
+                                controller: logradouroController,
+                                decoration: const InputDecoration(
+                                  labelText: "Logradouro",
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              flex: 1,
+                              child: TextField(
+                                controller: numeroController,
+                                decoration: const InputDecoration(
+                                  labelText: "Número",
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: bairroController,
+                          decoration: const InputDecoration(
+                            labelText: "Bairro",
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: TextField(
+                                controller: cidadeController,
+                                decoration: const InputDecoration(
+                                  labelText: "Cidade",
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              flex: 1,
+                              child: TextField(
+                                controller: estadoController,
+                                decoration: const InputDecoration(
+                                  labelText: "UF",
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                  ),
                   const SizedBox(height: 20),
 
                   TextField(

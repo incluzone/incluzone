@@ -7,9 +7,7 @@ import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:math';
 import 'dart:convert';
 import '../main.dart';
 
@@ -107,7 +105,6 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
     // Salva no disco
     await prefs.setInt('nivel_zoom', _nivelZoom);
 
-    // ESTA É A PARTE QUE FALTA:
     // Acessa o estado do MyApp através da chave global e chama o método de atualização
     myAppKey.currentState?.atualizarEscala(_nivelZoom);
   }
@@ -117,6 +114,7 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
       _registros.removeWhere((item) => item.id == id);
     });
     await _salvarNoSharedPreferences();
+    _mostrarSnackBar("Registro removido.");
   }
 
   Future<bool> _temInternet() async {
@@ -134,33 +132,52 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
   }
 
   Future<void> _salvarNoSharedPreferences() async {
-    final prefs = await SharedPreferences.getInstance();
-    // Converte a lista de objetos para uma String JSON
-    final String dadosCodificados = jsonEncode(
-      _registros.map((item) => item.toJson()).toList(),
-    );
-    await prefs.setString('meus_registros', dadosCodificados);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Converte a lista de objetos para uma String JSON
+      final String dadosCodificados = jsonEncode(
+        _registros.map((item) => item.toJson()).toList(),
+      );
+      await prefs.setString('meus_registros', dadosCodificados);
+    } catch (e) {
+      debugPrint("Erro ao salvar registros: $e");
+      if (mounted) {
+        _mostrarSnackBar(
+          "Não foi possível salvar os registros no dispositivo.",
+          erro: true,
+        );
+      }
+    }
   }
 
   Future<void> _carregarDoSharedPreferences() async {
-    final prefs = await SharedPreferences.getInstance();
-    final String? dadosString = prefs.getString('meus_registros');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? dadosString = prefs.getString('meus_registros');
 
-    if (dadosString != null) {
-      final List<dynamic> dadosDecodificados = jsonDecode(dadosString);
-      setState(() {
-        _registros = dadosDecodificados
-            .map((item) => RegistroPendente.fromJson(item))
-            .toList();
-      });
+      if (dadosString != null) {
+        final List<dynamic> dadosDecodificados = jsonDecode(dadosString);
+        setState(() {
+          _registros = dadosDecodificados
+              .map((item) => RegistroPendente.fromJson(item))
+              .toList();
+        });
+      }
+    } catch (e) {
+      // Dados corrompidos no dispositivo; melhor ignorar do que travar a tela
+      debugPrint("Erro ao carregar registros salvos: $e");
     }
   }
 
   Future<void> _carregarConfiguracoesIniciais() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
-    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
+      });
+    } catch (e) {
+      debugPrint("Erro ao carregar configurações: $e");
+    }
     _carregarDoSharedPreferences(); // Sua função de dados
   }
 
@@ -171,14 +188,13 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
 
     supabase.auth.onAuthStateChange.listen((data) {
       final AuthChangeEvent event = data.event;
-      final Session? session = data.session;
 
       switch (event) {
         case AuthChangeEvent.signedIn:
-          print("Usuário logou!");
+          debugPrint("Usuário logou!");
           break;
         case AuthChangeEvent.signedOut:
-          print("Usuário deslogou!");
+          debugPrint("Usuário deslogou!");
           // Redirecionar para tela de login
           break;
         default:
@@ -201,12 +217,16 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
       if (photo != null) {
         await Gal.putImage(photo.path);
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Foto salva na Galeria com sucesso!")),
-        );
+        _mostrarSnackBar("Foto salva na Galeria com sucesso!");
       }
     } catch (e) {
       debugPrint("Erro ao acessar câmera: $e");
+      if (mounted) {
+        _mostrarDialogo(
+          "Erro",
+          "Não foi possível acessar a câmera ou salvar a foto. Verifique se o app tem permissão de câmera e armazenamento.",
+        );
+      }
     }
   }
 
@@ -215,21 +235,6 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
     setState(() => _carregandoLocalizacao = true);
 
     try {
-      /*
-      final random = Random();
-      Position posicao = Position(
-        latitude: -23.5505 + (random.nextDouble() * 0.1),
-        longitude: -46.6333 + (random.nextDouble() * 0.1),
-        timestamp: DateTime.now(),
-        accuracy: 1,
-        altitude: 1,
-        heading: 0,
-        speed: 0,
-        speedAccuracy: 1,
-        altitudeAccuracy: 1,
-        headingAccuracy: 1,
-      );
-      */
       Position posicao = await _determinarPosicao();
       const double raioMinimoMetros = 20.0;
 
@@ -259,26 +264,36 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
       // 1. Declaramos variáveis de suporte fora do escopo do IF
       String enderecoExibicao = "Localização salva offline";
       String? logradouro, numero, bairro, cidade, estado;
+      bool falhaAoConverterEndereco = false;
 
       if (estaOnline) {
-        List<Placemark> placemarks = await placemarkFromCoordinates(
-          posicao.latitude,
-          posicao.longitude,
-        );
+        try {
+          List<Placemark> placemarks = await placemarkFromCoordinates(
+            posicao.latitude,
+            posicao.longitude,
+          );
 
-        if (placemarks.isNotEmpty) {
-          Placemark place = placemarks.first;
+          if (placemarks.isNotEmpty) {
+            Placemark place = placemarks.first;
 
-          // Preenchemos as variáveis com os dados do GPS
-          logradouro = place.thoroughfare;
-          numero = place.subThoroughfare;
-          bairro = place.subLocality;
-          cidade = place.subAdministrativeArea;
-          estado = place.administrativeArea;
+            // Preenchemos as variáveis com os dados do GPS
+            logradouro = place.thoroughfare;
+            numero = place.subThoroughfare;
+            bairro = place.subLocality;
+            cidade = place.subAdministrativeArea;
+            estado = place.administrativeArea;
 
-          // Monta a string bonitinha para aparecer na lista
-          enderecoExibicao =
-              "${logradouro ?? 'Rua desconhecida'} - ${bairro ?? ''}";
+            // Monta a string bonitinha para aparecer na lista
+            enderecoExibicao =
+                "${logradouro ?? 'Rua desconhecida'} - ${bairro ?? ''}";
+          } else {
+            enderecoExibicao = "Endereço não encontrado (coordenadas salvas)";
+            falhaAoConverterEndereco = true;
+          }
+        } catch (e) {
+          debugPrint("Erro ao converter coordenadas em endereço: $e");
+          enderecoExibicao = "Endereço não encontrado (coordenadas salvas)";
+          falhaAoConverterEndereco = true;
         }
       }
 
@@ -302,6 +317,19 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
       });
 
       await _salvarNoSharedPreferences();
+
+      if (mounted) {
+        if (!estaOnline) {
+          _mostrarAvisoOffline();
+        } else if (falhaAoConverterEndereco) {
+          _mostrarSnackBar(
+            "Localização salva, mas não foi possível identificar o endereço.",
+            erro: true,
+          );
+        } else {
+          _mostrarSnackBar("Localização capturada com sucesso!");
+        }
+      }
     } catch (e) {
       setState(() => _carregandoLocalizacao = false);
       _tratarErroLocalizacao(e.toString());
@@ -349,23 +377,47 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
       _mostrarDialogoGpsDesativado();
     } else if (erro.contains('PERMISSAO_NEGADA_PARA_SEMPRE')) {
       _mostrarDialogoConfiguracoes();
-    } else {
+    } else if (erro.contains('PERMISSAO_NEGADA')) {
       _mostrarDialogoExplicacao();
+    } else {
+      // Erro genuinamente inesperado (timeout, falha do sensor, etc.)
+      _mostrarDialogo(
+        "Erro",
+        "Não foi possível obter sua localização agora. Tente novamente.",
+      );
     }
   }
 
-  void _mostrarDialogo(String titulo, String mensagem) {
-    showDialog(
+  Future<void> _mostrarDialogo(
+    String titulo,
+    String mensagem, {
+    List<Widget>? botoesPersonalizados,
+  }) {
+    return showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: Text(titulo),
         content: Text(mensagem),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("OK"),
-          ),
-        ],
+        actions:
+            botoesPersonalizados ??
+            [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("OK"),
+              ),
+            ],
+      ),
+    );
+  }
+
+  void _mostrarSnackBar(String mensagem, {bool erro = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(mensagem),
+        backgroundColor: erro ? Colors.red.shade600 : null,
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -562,116 +614,149 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
             const SizedBox(height: 24),
 
             // Exibição do Endereço Obtido
-            // Substitua o Container estático por este bloco:
             Expanded(
-              child: ListView.builder(
-                itemCount: _registros.length,
-                itemBuilder: (context, index) {
-                  final item = _registros[index];
-                  return Card(
-                    // Usando Card para um visual melhor
-                    margin: const EdgeInsets.symmetric(vertical: 8),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.endereco,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  color: Colors.red,
+              child: _registros.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 60),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.location_off_outlined,
+                              size: 72,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              "Nenhuma localização capturada ainda.",
+                              style: TextStyle(fontSize: 16, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: _registros.length,
+                      itemBuilder: (context, index) {
+                        final item = _registros[index];
+                        return Card(
+                          // Usando Card para um visual melhor
+                          margin: const EdgeInsets.symmetric(vertical: 8),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.endereco,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                                onPressed: () {
-                                  // Abre o diálogo de confirmação
-                                  showDialog(
-                                    context: context,
-                                    builder: (BuildContext context) {
-                                      return AlertDialog(
-                                        title: const Text("Confirmar exclusão"),
-                                        content: const Text(
-                                          "Tem certeza que deseja excluir esta localização?",
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            child: const Text("Cancelar"),
-                                            onPressed: () => Navigator.of(
-                                              context,
-                                            ).pop(), // Fecha o diálogo
-                                          ),
-                                          TextButton(
-                                            child: const Text(
-                                              "Excluir",
-                                              style: TextStyle(
-                                                color: Colors.red,
-                                              ),
-                                            ),
-                                            onPressed: () {
-                                              _removerRegistro(
-                                                item.id,
-                                              ); // Executa a função original
-                                              Navigator.of(
-                                                context,
-                                              ).pop(); // Fecha o diálogo
-                                            },
-                                          ),
-                                        ],
-                                      );
-                                    },
-                                  );
-                                },
-                              ),
-                              TextButton(
-                                // No pendente.dart, altere o botão de "Registrar" para isso:
-                                onPressed: () async {
-                                  if (!(await _temInternet())) {
-                                    if (mounted) {
-                                      _mostrarDialogo(
-                                        "Sem Conexão",
-                                        "Parece que você está offline. Verifique sua conexão com a internet e tente novamente.",
-                                      );
-                                    }
-                                    return; // Interrompe a execução aqui
-                                  }
-                                  if (service.estaLogado) {
-                                    // Aguarda o usuário terminar o registro na outra tela
-                                    await Navigator.pushNamed(
-                                      // Use pushNamed em vez de pushReplacementNamed para poder voltar
-                                      context,
-                                      '/registro_vagas',
-                                      arguments: item,
-                                    );
-                                    // Quando ele voltar para esta tela, executa o carregamento de novo:
-                                    _carregarDoSharedPreferences();
-                                  } else {
-                                    Navigator.pushNamed(context, '/login');
-                                  }
-                                },
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text("Registrar"),
-                                    SizedBox(
-                                      width: 8,
-                                    ), // Pequeno espaço entre o texto e a seta
-                                    Icon(Icons.arrow_forward),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.delete_outline,
+                                        color: Colors.red,
+                                      ),
+                                      onPressed: () {
+                                        // Abre o diálogo de confirmação
+                                        showDialog(
+                                          context: context,
+                                          builder: (BuildContext context) {
+                                            return AlertDialog(
+                                              title: const Text(
+                                                "Confirmar exclusão",
+                                              ),
+                                              content: const Text(
+                                                "Tem certeza que deseja excluir esta localização?",
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  child: const Text(
+                                                    "Cancelar",
+                                                  ),
+                                                  onPressed: () => Navigator.of(
+                                                    context,
+                                                  ).pop(), // Fecha o diálogo
+                                                ),
+                                                TextButton(
+                                                  child: const Text(
+                                                    "Excluir",
+                                                    style: TextStyle(
+                                                      color: Colors.red,
+                                                    ),
+                                                  ),
+                                                  onPressed: () {
+                                                    _removerRegistro(
+                                                      item.id,
+                                                    ); // Executa a função original
+                                                    Navigator.of(
+                                                      context,
+                                                    ).pop(); // Fecha o diálogo
+                                                  },
+                                                ),
+                                              ],
+                                            );
+                                          },
+                                        );
+                                      },
+                                    ),
+                                    TextButton(
+                                      // No pendente.dart, altere o botão de "Registrar" para isso:
+                                      onPressed: () async {
+                                        if (!(await _temInternet())) {
+                                          if (mounted) {
+                                            _mostrarDialogo(
+                                              "Sem Conexão",
+                                              "Parece que você está offline. Verifique sua conexão com a internet e tente novamente.",
+                                            );
+                                          }
+                                          return; // Interrompe a execução aqui
+                                        }
+                                        if (service.estaLogado) {
+                                          // Aguarda o usuário terminar o registro na outra tela
+                                          await Navigator.pushNamed(
+                                            // Use pushNamed em vez de pushReplacementNamed para poder voltar
+                                            context,
+                                            '/registro_vagas',
+                                            arguments: item,
+                                          );
+                                          // Quando ele voltar para esta tela, executa o carregamento de novo:
+                                          _carregarDoSharedPreferences();
+                                        } else {
+                                          _mostrarSnackBar(
+                                            "Faça login para continuar o registro.",
+                                          );
+                                          Navigator.pushNamed(
+                                            context,
+                                            '/login',
+                                          );
+                                        }
+                                      },
+                                      child: const Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text("Registrar"),
+                                          SizedBox(
+                                            width: 8,
+                                          ), // Pequeno espaço entre o texto e a seta
+                                          Icon(Icons.arrow_forward),
+                                        ],
+                                      ),
+                                    ),
                                   ],
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
             ),
             Container(
               width: double.infinity, // Largura 100%

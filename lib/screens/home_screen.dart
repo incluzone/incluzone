@@ -18,6 +18,7 @@ import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_map_animations/flutter_map_animations.dart';
 import 'dart:ui';
+import 'package:http/http.dart' as http;
 import '../main.dart';
 
 class VisualizadorImagem extends StatelessWidget {
@@ -131,6 +132,23 @@ final TextEditingController _pesquisaController = TextEditingController();
   // Guarda o texto que a pessoa digitou
 String _textoPesquisa = '';
 
+  // ---------------------------------------------------------------------
+  // PESQUISA DE LUGARES (LocationIQ)
+  // ---------------------------------------------------------------------
+  // Crie uma conta gratuita em https://locationiq.com/register e cole sua
+  // chave de API abaixo. O plano gratuito já é suficiente para a maioria
+  // dos apps pequenos/médios.
+  static const String _locationIqApiKey = 'pk.56580cf5d359c74bbe21d5140a2bac7f';
+
+  bool _pesquisaAberta = false;
+  final TextEditingController _controladorPesquisa = TextEditingController();
+  final FocusNode _focusPesquisa = FocusNode();
+  List<Map<String, dynamic>> _resultadosPesquisa = [];
+  bool _carregandoPesquisa = false;
+  String? _erroPesquisa;
+  Timer? _debouncePesquisa;
+  String? _municipioUsuario;
+
   @override
   void initState() {
     super.initState();
@@ -166,6 +184,18 @@ void dispose() {
 
   if (_realtimeSubscription != null) {
     Supabase.instance.client.removeChannel(_realtimeSubscription!);
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _positionStream?.cancel(); // Para de seguir o usuário ao sair da tela
+    _cacheStore.close();
+    if (_realtimeSubscription != null) {
+      Supabase.instance.client.removeChannel(_realtimeSubscription!);
+    }
+    _debouncePesquisa?.cancel();
+    _controladorPesquisa.dispose();
+    _focusPesquisa.dispose();
+    super.dispose();
   }
   super.dispose();
 }
@@ -180,30 +210,100 @@ void dispose() {
     }
   }
 
-  Future<void> _atualizarZoom(bool aumentar) async {
-    final prefs = await SharedPreferences.getInstance();
-
-    setState(() {
-      if (aumentar && _nivelZoom < 2) {
-        _nivelZoom++;
-      } else if (!aumentar && _nivelZoom > 0) {
-        _nivelZoom--;
+  Future<void> _descobrirMunicipioUsuario(LatLng posicao) async {
+    try {
+      final uri = Uri.parse(
+        'https://us1.locationiq.com/v1/reverse'
+        '?key=$_locationIqApiKey'
+        '&lat=${posicao.latitude}'
+        '&lon=${posicao.longitude}'
+        '&format=json'
+        '&accept-language=pt-BR',
+      );
+      final resposta = await http.get(uri).timeout(const Duration(seconds: 6));
+      if (resposta.statusCode == 200) {
+        final dados = jsonDecode(resposta.body);
+        final endereco = dados['address'] ?? {};
+        final municipio =
+            endereco['city'] ??
+            endereco['town'] ??
+            endereco['municipality'] ??
+            endereco['county'];
+        if (mounted && municipio != null) {
+          setState(() => _municipioUsuario = municipio.toString());
+        }
       }
-    });
+    } catch (e) {
+      debugPrint("Erro ao descobrir município: $e");
+    }
+  }
 
-    // Salva no disco
-    await prefs.setInt('nivel_zoom', _nivelZoom);
+  Future<void> _atualizarZoom(bool aumentar) async {
+    final int nivelAnterior = _nivelZoom;
+    int novoNivel = nivelAnterior;
+
+    if (aumentar && nivelAnterior < 2) {
+      novoNivel++;
+    } else if (!aumentar && nivelAnterior > 0) {
+      novoNivel--;
+    } else {
+      return;
+    }
+
+    // Atualiza a UI imediatamente para dar resposta rápida ao usuário
+    setState(() {
+      _nivelZoom = novoNivel;
+    });
 
     // ESTA É A PARTE QUE FALTA:
     // Acessa o estado do MyApp através da chave global e chama o método de atualização
     myAppKey.currentState?.atualizarEscala(_nivelZoom);
+
+    try {
+      // Salva no disco
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('nivel_zoom', _nivelZoom);
+    } catch (e) {
+      // Se não conseguir salvar, desfaz a alteração visual e avisa o usuário
+      debugPrint("Erro ao salvar preferência de zoom: $e");
+      if (!mounted) return;
+      setState(() {
+        _nivelZoom = nivelAnterior;
+      });
+      myAppKey.currentState?.atualizarEscala(_nivelZoom);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Não foi possível salvar a preferência de zoom. Tente novamente.',
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _carregarConfiguracoesIniciais() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
-    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
+      });
+    } catch (e) {
+      // Se não der pra ler as preferências, seguimos com o padrão e
+      // avisamos discretamente (sem bloquear a tela com um diálogo)
+      debugPrint("Erro ao carregar preferências de zoom: $e");
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Não foi possível carregar suas preferências de zoom. Usando o padrão.',
+            ),
+          ),
+        );
+      });
+    }
   }
 
   Future<bool> _temInternet() async {
@@ -286,33 +386,48 @@ void dispose() {
 
   // Função para inicializar o local de salvamento do mapa
   Future<void> _initCache() async {
-    final dir = await getTemporaryDirectory();
-    _cacheStore = DbCacheStore(
-      databasePath: dir.path,
-      databaseName: "map_cache_pcd",
-    );
-    setState(() {
-      _cacheInitialized = true;
-    });
+    try {
+      final dir = await getTemporaryDirectory();
+      _cacheStore = DbCacheStore(
+        databasePath: dir.path,
+        databaseName: "map_cache_pcd",
+      );
+      if (!mounted) return;
+      setState(() {
+        _cacheInitialized = true;
+      });
+    } catch (e) {
+      // O cache de tiles é apenas uma otimização para uso offline do mapa;
+      // se falhar, o app segue funcionando normalmente enquanto houver internet
+      debugPrint("Erro ao inicializar cache do mapa: $e");
+    }
   }
 
   // Salva a última localização conhecida
   Future<void> _salvarUltimaLocalizacao(LatLng posicao) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('ultima_lat', posicao.latitude);
-    await prefs.setDouble('ultima_lng', posicao.longitude);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble('ultima_lat', posicao.latitude);
+      await prefs.setDouble('ultima_lng', posicao.longitude);
+    } catch (e) {
+      debugPrint("Erro ao salvar última localização: $e");
+    }
   }
 
   // Recupera a localização salva ou retorna o fallback se não houver nada
   Future<LatLng> _recuperarUltimaLocalizacao() async {
-    final prefs = await SharedPreferences.getInstance();
-    final lat = prefs.getDouble('ultima_lat');
-    final lng = prefs.getDouble('ultima_lng');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lat = prefs.getDouble('ultima_lat');
+      final lng = prefs.getDouble('ultima_lng');
 
-    if (lat != null && lng != null) {
-      return LatLng(lat, lng);
+      if (lat != null && lng != null) {
+        return LatLng(lat, lng);
+      }
+    } catch (e) {
+      debugPrint("Erro ao recuperar última localização: $e");
     }
-    return _fallback; // Retorna São Paulo apenas na primeira vez da vida do app
+    return _fallback; // Retorna São Paulo se não houver nada salvo ou der erro
   }
 
   void carregar() async {
@@ -330,15 +445,20 @@ void dispose() {
     }
 
     // 2. Carregar dados do usuário (Supabase)
-    final nome = await service.getNomeUsuario();
-    final user = Supabase.instance.client.auth.currentUser;
+    // Isolado em try/catch para que uma falha aqui não impeça o mapa de carregar
+    try {
+      final nome = await service.getNomeUsuario();
+      final user = Supabase.instance.client.auth.currentUser;
 
-    if (mounted) {
-      setState(() {
-        nomeUsuario = nome;
-        isGoogle =
-            user?.identities?.any((i) => i.provider == 'google') ?? false;
-      });
+      if (mounted) {
+        setState(() {
+          nomeUsuario = nome;
+          isGoogle =
+              user?.identities?.any((i) => i.provider == 'google') ?? false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Erro ao carregar dados do usuário: $e");
     }
 
     // --- LÓGICA DE LOCALIZAÇÃO OTIMIZADA ---
@@ -386,6 +506,12 @@ void dispose() {
     } finally {
       // 5. LIBERAÇÃO FINAL: Agora que temos o melhor local possível,
       // renderizamos o mapa de uma vez.
+
+      // Descobre o município do usuário para filtrar as buscas depois
+      if (_posicaoAtual != null) {
+        await _descobrirMunicipioUsuario(_posicaoAtual!);
+      }
+
       if (mounted) {
         setState(() {
           // Se a posição for igual ao fallback (SP), zoom 13. Caso contrário, zoom 17.
@@ -409,14 +535,19 @@ void dispose() {
     }
   }
 
-  Future<void> _atualizarLocalizacao() async {
+  Future<void> _atualizarLocalizacao({bool mostrarFeedback = false}) async {
     try {
       LocationPermission permission = await Geolocator.checkPermission();
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
 
+      if (!serviceEnabled) {
+        if (mostrarFeedback && mounted) _mostrarDialogoGpsDesativado();
+        return; // 🚫 evita spam
+      }
+
       if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever ||
-          !serviceEnabled) {
+          permission == LocationPermission.deniedForever) {
+        if (mostrarFeedback && mounted) _mostrarDialogoExplicacao();
         return; // 🚫 evita spam
       }
 
@@ -436,6 +567,17 @@ void dispose() {
       _animatedMapController.animateTo(dest: novaPosicao, zoom: 17);
     } catch (e) {
       debugPrint("Erro ao atualizar localização: $e");
+      // Só incomoda o usuário com um retorno se ele pediu explicitamente
+      // (ex: tocou no botão de centralizar); atualizações automáticas ficam silenciosas
+      if (mostrarFeedback && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Não foi possível obter sua localização agora. Tente novamente.',
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -458,6 +600,7 @@ void dispose() {
           },
           onError: (error) {
             // Se o usuário desativar o GPS ou permissão, entra aqui
+            debugPrint("Erro no stream de localização: $error");
             setState(() {
               _gpsAtivoEPermitido = false;
             });
@@ -469,8 +612,9 @@ void dispose() {
     if (_posicaoAtual != null && _gpsAtivoEPermitido) {
       _animatedMapController.animateTo(dest: _posicaoAtual!, zoom: 17);
     } else {
-      // Caso o GPS esteja desligado, tenta reativar/solicitar
-      _atualizarLocalizacao();
+      // Caso o GPS esteja desligado/sem permissão, tenta reativar e
+      // avisa o usuário (diálogo ou snackbar) se não conseguir centralizar
+      _atualizarLocalizacao(mostrarFeedback: true);
     }
   }
 
@@ -654,7 +798,13 @@ void dispose() {
 
       Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
     } catch (e) {
-      _mostrarDialogo("Erro", "Não foi possível excluir a conta: $e");
+      // Não expomos o erro técnico bruto ao usuário, apenas registramos
+      debugPrint("Erro ao excluir conta: $e");
+      if (!mounted) return;
+      _mostrarDialogo(
+        "Erro",
+        "Não foi possível excluir sua conta agora. Verifique sua conexão e tente novamente, ou entre em contato com o suporte.",
+      );
     }
   }
 
@@ -728,17 +878,52 @@ void dispose() {
     } catch (e) {
       debugPrint("Erro ao buscar do Supabase, tentando cache local: $e");
 
-      // Se falhar (offline), tenta ler do arquivo local
-      final file = await _getMarkersCacheFile();
-      if (await file.exists()) {
-        final jsonString = await file.readAsString();
-        final List<dynamic> dadosLocal = jsonDecode(jsonString);
-        return List<Map<String, dynamic>>.from(dadosLocal);
+      // Se falhar (offline ou erro no servidor), tenta ler do arquivo local
+      try {
+        final file = await _getMarkersCacheFile();
+        if (await file.exists()) {
+          final jsonString = await file.readAsString();
+          final List<dynamic> dadosLocal = jsonDecode(jsonString);
+
+          // Se já existe o aviso persistente de "offline" (via _ouvirConexao),
+          // não precisamos duplicar a mensagem aqui
+          if (!_estaOffline) {
+            _avisarUsoDeCacheDeVagas();
+          }
+          return List<Map<String, dynamic>>.from(dadosLocal);
+        }
+      } catch (erroCache) {
+        debugPrint("Erro ao ler cache local de vagas: $erroCache");
       }
 
-      // Se não houver cache nem internet, retorna vazio
+      // Se não houver cache nem internet, retorna vazio e avisa o usuário
+      if (!_estaOffline) {
+        _avisarFalhaAoCarregarVagas();
+      }
       return [];
     }
+  }
+
+  // Avisa que os dados exibidos são do cache (não os mais recentes)
+  void _avisarUsoDeCacheDeVagas() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          "Não foi possível atualizar as vagas agora. Exibindo dados salvos.",
+        ),
+      ),
+    );
+  }
+
+  // Avisa que não foi possível obter nenhuma vaga (nem do servidor, nem do cache)
+  void _avisarFalhaAoCarregarVagas() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Não foi possível carregar as vagas no momento."),
+      ),
+    );
   }
 
   List<Marker> gerarMarcadores(List<Map<String, dynamic>> locais) {
@@ -818,21 +1003,222 @@ if (_textoPesquisa.isNotEmpty && locaisFiltrados.length == 1) {
 
   // Salva os filtros ativos no disco
   Future<void> _salvarFiltrosNoCache() async {
-    final prefs = await SharedPreferences.getInstance();
-    // Convertemos o Set em List para o SharedPreferences aceitar
-    await prefs.setStringList('filtros_usuarios', _filtrosAtivos.toList());
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Convertemos o Set em List para o SharedPreferences aceitar
+      await prefs.setStringList('filtros_usuarios', _filtrosAtivos.toList());
+    } catch (e) {
+      debugPrint("Erro ao salvar filtros: $e");
+    }
   }
 
   // Recupera os filtros salvos
   Future<void> _recuperarFiltrosDoCache() async {
-    final prefs = await SharedPreferences.getInstance();
-    final List<String>? filtrosSalvos = prefs.getStringList('filtros_usuarios');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final List<String>? filtrosSalvos = prefs.getStringList(
+        'filtros_usuarios',
+      );
 
-    if (filtrosSalvos != null && filtrosSalvos.isNotEmpty) {
+      if (filtrosSalvos != null && filtrosSalvos.isNotEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _filtrosAtivos = filtrosSalvos.toSet();
+        });
+      }
+    } catch (e) {
+      debugPrint("Erro ao recuperar filtros: $e");
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // LÓGICA DE PESQUISA DE LUGARES (LocationIQ)
+  // ---------------------------------------------------------------------
+
+  void _alternarPesquisa() {
+    if (_pesquisaAberta) {
+      _fecharPesquisa();
+      return;
+    }
+
+    setState(() {
+      _pesquisaAberta = true;
+      _menuAberto = false; // fecha o menu de filtro, se estiver aberto
+    });
+
+    // Espera o frame renderizar o campo antes de focar/abrir o teclado
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusPesquisa.requestFocus();
+    });
+  }
+
+  void _fecharPesquisa() {
+    _debouncePesquisa?.cancel();
+    _focusPesquisa.unfocus();
+    if (!mounted) return;
+    setState(() {
+      _pesquisaAberta = false;
+      _controladorPesquisa.clear();
+      _resultadosPesquisa = [];
+      _erroPesquisa = null;
+      _carregandoPesquisa = false;
+    });
+  }
+
+  // Chamado a cada tecla digitada; usa debounce para não estourar a API
+  void _aoDigitarPesquisa(String texto) {
+    _debouncePesquisa?.cancel();
+
+    if (texto.trim().isEmpty) {
       setState(() {
-        _filtrosAtivos = filtrosSalvos.toSet();
+        _resultadosPesquisa = [];
+        _carregandoPesquisa = false;
+        _erroPesquisa = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _carregandoPesquisa = true;
+      _erroPesquisa = null;
+    });
+
+    _debouncePesquisa = Timer(const Duration(milliseconds: 500), () {
+      _buscarNoLocationIQ(texto.trim());
+    });
+  }
+
+  // Faz a chamada real à API de autocomplete do LocationIQ
+  Future<void> _buscarNoLocationIQ(String query) async {
+    if (_locationIqApiKey.isEmpty ||
+        _locationIqApiKey == 'COLOQUE_SUA_CHAVE_LOCATIONIQ_AQUI') {
+      if (!mounted) return;
+      setState(() {
+        _carregandoPesquisa = false;
+        _erroPesquisa =
+            'Configure sua chave da API do LocationIQ no código (constante _locationIqApiKey).';
+      });
+      return;
+    }
+
+    if (!(await _temInternet())) {
+      if (!mounted) return;
+      setState(() {
+        _carregandoPesquisa = false;
+        _erroPesquisa = 'Sem conexão com a internet.';
+      });
+      return;
+    }
+
+    try {
+      final lat = _posicaoAtual?.latitude ?? _fallback.latitude;
+      final lng = _posicaoAtual?.longitude ?? _fallback.longitude;
+
+      // Cria uma caixa delimitadora (viewbox) em torno da posição atual do
+      // usuário, usada apenas para PRIORIZAR resultados próximos
+      // (bounded=0 permite que resultados fora dela também apareçam).
+      const double delta = 0.35; // ~ raio de busca em graus
+      final viewbox =
+          '${lng - delta},${lat + delta},${lng + delta},${lat - delta}';
+
+      final uri = Uri.parse(
+        'https://api.locationiq.com/v1/search'
+        '?key=$_locationIqApiKey'
+        '&q=${Uri.encodeQueryComponent(query)}'
+        '&viewbox=$viewbox'
+        '&bounded=0'
+        '&limit=10'
+        '&dedupe=1'
+        '&accept-language=pt-BR'
+        '&addressdetails=1'
+        '&format=json',
+      );
+
+      final resposta = await http.get(uri).timeout(const Duration(seconds: 6));
+
+      if (!mounted) return;
+
+      if (resposta.statusCode == 200) {
+        final List<dynamic> dados = jsonDecode(resposta.body);
+
+        final filtrados = _municipioUsuario == null
+            ? dados
+            : dados.where((item) {
+                final endereco = item['address'] ?? {};
+                final cidadeItem =
+                    (endereco['city'] ??
+                            endereco['town'] ??
+                            endereco['municipality'] ??
+                            endereco['county'] ??
+                            '')
+                        .toString()
+                        .toLowerCase();
+                return cidadeItem == _municipioUsuario!.toLowerCase();
+              }).toList();
+
+        setState(() {
+          _resultadosPesquisa = filtrados.map<Map<String, dynamic>>((item) {
+            return {
+              'display_name': (item['display_name'] ?? '').toString(),
+              'lat': double.tryParse(item['lat'].toString()) ?? 0.0,
+              'lon': double.tryParse(item['lon'].toString()) ?? 0.0,
+              'tipo': (item['type'] ?? '').toString(),
+            };
+          }).toList();
+          _carregandoPesquisa = false;
+          _erroPesquisa = _resultadosPesquisa.isEmpty
+              ? 'Nenhum resultado encontrado.'
+              : null;
+        });
+      } else if (resposta.statusCode == 404) {
+        // O LocationIQ retorna 404 quando a busca não encontra nada
+        setState(() {
+          _resultadosPesquisa = [];
+          _carregandoPesquisa = false;
+          _erroPesquisa = 'Nenhum resultado encontrado.';
+        });
+      } else {
+        debugPrint(
+          'Erro LocationIQ: ${resposta.statusCode} - ${resposta.body}',
+        );
+        setState(() {
+          _resultadosPesquisa = [];
+          _carregandoPesquisa = false;
+          _erroPesquisa = 'Não foi possível buscar agora. Tente novamente.';
+        });
+      }
+    } catch (e) {
+      debugPrint("Erro ao buscar lugares no LocationIQ: $e");
+      if (!mounted) return;
+      setState(() {
+        _resultadosPesquisa = [];
+        _carregandoPesquisa = false;
+        _erroPesquisa = 'Não foi possível buscar agora. Tente novamente.';
       });
     }
+  }
+
+  // Leva o mapa até o ponto escolhido pelo usuário
+  Future<void> _selecionarResultadoPesquisa(
+    Map<String, dynamic> resultado,
+  ) async {
+    final destino = LatLng(
+      resultado['lat'] as double,
+      resultado['lon'] as double,
+    );
+    final nomeLocal = resultado['display_name'] as String;
+
+    _fecharPesquisa();
+
+    await _animatedMapController.animateTo(dest: destino, zoom: 17.0);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(nomeLocal, maxLines: 1, overflow: TextOverflow.ellipsis),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   Widget _buildFiltroCustom() {
@@ -979,6 +1365,179 @@ if (_textoPesquisa.isNotEmpty && locaisFiltrados.length == 1) {
               duration: const Duration(milliseconds: 250),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // Barra de pesquisa que ocupa toda a largura, sobrepondo o botão de filtro
+  Widget _buildBotaoPesquisaAnimado(BuildContext context) {
+    final larguraTela = MediaQuery.of(context).size.width;
+    const double tamanhoFechado = 56.0;
+    final double larguraAberta =
+        larguraTela - 32; // 16px de margem de cada lado
+
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOutCubic,
+      top: 16,
+      right: 16,
+      left: _pesquisaAberta ? 16 : larguraTela - 16 - tamanhoFechado,
+      child: GestureDetector(
+        onTap: _pesquisaAberta ? null : _alternarPesquisa,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOutCubic,
+          height: 56,
+          width: _pesquisaAberta ? larguraAberta : tamanhoFechado,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(15),
+            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          alignment: Alignment.center,
+          child: _pesquisaAberta
+              ? Row(
+                  children: [
+                    const Icon(
+                      Icons.search,
+                      size: 20,
+                      color: Colors.blueAccent,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: _controladorPesquisa,
+                        focusNode: _focusPesquisa,
+                        onChanged: _aoDigitarPesquisa,
+                        textInputAction: TextInputAction.search,
+                        decoration: const InputDecoration(
+                          hintText: 'Pesquisar um lugar...',
+                          border: InputBorder.none,
+                          isDense: true,
+                        ),
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ),
+                    if (_carregandoPesquisa) ...[
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
+                    GestureDetector(
+                      onTap: _fecharPesquisa,
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Icon(
+                          Icons.close,
+                          color: Colors.grey.shade600,
+                          size: 22,
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : const Icon(Icons.search, color: Colors.blueAccent),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResultadosPesquisaAnimados(BuildContext context) {
+    final temConteudo = _resultadosPesquisa.isNotEmpty || _erroPesquisa != null;
+
+    return Positioned(
+      top: 72,
+      left: 16,
+      right: 16,
+      child: IgnorePointer(
+        ignoring: !temConteudo,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          opacity: temConteudo ? 1 : 0,
+          child: _resultadosPesquisa.isNotEmpty
+              ? Container(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.45,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 4,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: _resultadosPesquisa.length,
+                    separatorBuilder: (context, index) =>
+                        Divider(height: 1, color: Colors.grey.shade100),
+                    itemBuilder: (context, index) {
+                      final resultado = _resultadosPesquisa[index];
+                      return InkWell(
+                        onTap: () => _selecionarResultadoPesquisa(resultado),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 16,
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.location_on_outlined,
+                                color: Colors.blueAccent,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  resultado['display_name'] as String,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.black87,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                )
+              : (_erroPesquisa != null
+                    ? Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 14,
+                          horizontal: 16,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: Text(
+                          _erroPesquisa!,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade600,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink()),
         ),
       ),
     );
@@ -1395,6 +1954,7 @@ if (_textoPesquisa.isNotEmpty && locaisFiltrados.length == 1) {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(title: const Text("Home")),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1410,6 +1970,10 @@ if (_textoPesquisa.isNotEmpty && locaisFiltrados.length == 1) {
                       initialZoom: _zoomAtual,
                       maxZoom: 19.0,
                       minZoom: 12.0,
+                      onTap: (_, _) {
+                        // Fecha a pesquisa ao tocar no mapa
+                        if (_pesquisaAberta) _fecharPesquisa();
+                      },
                     ),
                     children: [
                       TileLayer(
@@ -1655,7 +2219,14 @@ if (_mapReady)
                         leading: const Icon(Icons.logout),
                         onTap: () async {
                           Navigator.pop(context);
-                          await service.client.auth.signOut();
+                          try {
+                            await service.client.auth.signOut();
+                          } catch (e) {
+                            // Mesmo se falhar remotamente, seguimos limpando o
+                            // estado local para não travar o usuário logado
+                            debugPrint("Erro ao sair: $e");
+                          }
+                          if (!mounted) return;
                           setState(() => nomeUsuario = null);
                           Navigator.pushReplacementNamed(context, '/');
                         },

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -25,40 +26,128 @@ class _SobreScreenState extends State<SobreScreen> {
       path: 'incluzoneapp+suporte@gmail.com',
     );
 
-    if (await canLaunchUrl(emailLaunchUri)) {
-      await launchUrl(emailLaunchUri);
-    } else {
-      // Caso ocorra um erro ou não haja app de email instalado
+    try {
+      final bool podeAbrir = await canLaunchUrl(emailLaunchUri);
+
+      if (podeAbrir) {
+        final bool abriu = await launchUrl(emailLaunchUri);
+        if (!abriu && mounted) {
+          _mostrarDialogoEmailIndisponivel();
+        }
+      } else {
+        // Caso não haja app de email instalado
+        if (mounted) {
+          _mostrarDialogoEmailIndisponivel();
+        }
+      }
+    } catch (e) {
+      // Caso ocorra algum erro inesperado ao tentar abrir o app de email
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Não foi possível abrir o app de e-mail'),
-          ),
-        );
+        _mostrarDialogoEmailIndisponivel();
       }
     }
   }
 
+  // Diálogo com opção de copiar o e-mail, já que o app de email
+  // pode não estar instalado/configurado no dispositivo do usuário
+  void _mostrarDialogoEmailIndisponivel() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Não foi possível abrir o e-mail"),
+        content: const Text(
+          "Não encontramos um aplicativo de e-mail configurado neste "
+          "dispositivo. Você pode copiar o endereço abaixo e nos enviar "
+          "sua mensagem manualmente:\n\nincluzoneapp+suporte@gmail.com",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(
+                const ClipboardData(text: 'incluzoneapp+suporte@gmail.com'),
+              );
+              if (!mounted) return;
+              Navigator.of(dialogContext).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('E-mail copiado para a área de transferência'),
+                ),
+              );
+            },
+            child: const Text("Copiar e-mail"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _carregarConfiguracoesIniciais() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
-    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
+      });
+    } catch (e) {
+      // Caso as preferências não possam ser lidas, seguimos com o padrão
+      // e avisamos o usuário de forma discreta (snackbar), sem bloquear a tela
+      if (!mounted) return;
+      setState(() {
+        _nivelZoom = 0;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Não foi possível carregar suas preferências de zoom. Usando o padrão.',
+            ),
+          ),
+        );
+      });
+    }
   }
 
   Future<void> _atualizarZoom(bool aumentar) async {
-    final prefs = await SharedPreferences.getInstance();
+    final int nivelAnterior = _nivelZoom;
+    int novoNivel = nivelAnterior;
 
+    if (aumentar && nivelAnterior < 2) {
+      novoNivel++;
+    } else if (!aumentar && nivelAnterior > 0) {
+      novoNivel--;
+    } else {
+      return;
+    }
+
+    // Atualiza a UI imediatamente para dar resposta rápida ao usuário
     setState(() {
-      if (aumentar && _nivelZoom < 2) {
-        _nivelZoom++;
-      } else if (!aumentar && _nivelZoom > 0) {
-        _nivelZoom--;
-      }
+      _nivelZoom = novoNivel;
     });
-
-    await prefs.setInt('nivel_zoom', _nivelZoom);
     myAppKey.currentState?.atualizarEscala(_nivelZoom);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('nivel_zoom', _nivelZoom);
+    } catch (e) {
+      // Se não conseguir salvar, desfaz a alteração visual e avisa o usuário
+      if (!mounted) return;
+      setState(() {
+        _nivelZoom = nivelAnterior;
+      });
+      myAppKey.currentState?.atualizarEscala(_nivelZoom);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Não foi possível salvar a preferência de zoom. Tente novamente.',
+          ),
+        ),
+      );
+    }
   }
 
   @override

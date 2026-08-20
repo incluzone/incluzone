@@ -18,8 +18,10 @@ class _RedefinirSenhaScreenState extends State<RedefinirSenhaScreen> {
   final senha = TextEditingController();
   final confirmarSenha = TextEditingController();
   int _nivelZoom = 0;
+  bool _carregando = false;
 
   bool _senhaVisivel = false;
+  bool _confirmarSenhaVisivel = false;
   final service = SupabaseService();
 
   @override
@@ -32,7 +34,10 @@ class _RedefinirSenhaScreenState extends State<RedefinirSenhaScreen> {
 
       if (event == AuthChangeEvent.passwordRecovery) {
         // usuário entrou via link de recuperação
-        print("Modo recuperação ativado");
+        debugPrint("Modo recuperação ativado");
+        if (mounted) {
+          _mostrarSnackBar("Defina sua nova senha abaixo.");
+        }
       }
     });
   }
@@ -58,16 +63,19 @@ class _RedefinirSenhaScreenState extends State<RedefinirSenhaScreen> {
     // Salva no disco
     await prefs.setInt('nivel_zoom', _nivelZoom);
 
-    // ESTA É A PARTE QUE FALTA:
     // Acessa o estado do MyApp através da chave global e chama o método de atualização
     myAppKey.currentState?.atualizarEscala(_nivelZoom);
   }
 
   Future<void> _carregarConfiguracoesIniciais() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
-    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
+      });
+    } catch (e) {
+      debugPrint("Erro ao carregar configurações: $e");
+    }
   }
 
   Future<bool> _temInternet() async {
@@ -84,55 +92,75 @@ class _RedefinirSenhaScreenState extends State<RedefinirSenhaScreen> {
     }
   }
 
-  void _mostrarDialogo(String titulo, String mensagem) {
-    showDialog(
+  Future<void> _mostrarDialogo(
+    String titulo,
+    String mensagem, {
+    List<Widget>? botoesPersonalizados,
+  }) {
+    return showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: Text(titulo),
         content: Text(mensagem),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("OK"),
-          ),
-        ],
+        actions:
+            botoesPersonalizados ??
+            [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("OK"),
+              ),
+            ],
+      ),
+    );
+  }
+
+  void _mostrarSnackBar(String mensagem, {bool erro = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(mensagem),
+        backgroundColor: erro ? Colors.red.shade600 : null,
+        duration: const Duration(seconds: 3),
       ),
     );
   }
 
   bool _validarCampos() {
-    if (senha.text.isNotEmpty) {
-      final temMaiuscula = RegExp(r'[A-Z]').hasMatch(senha.text);
-      final temNumero = RegExp(r'[0-9]').hasMatch(senha.text);
-      final temEspecial = RegExp(
-        r'[!@#\$&*~%^()_\-+=<>?/\\|{}[\]:;.,]',
-      ).hasMatch(senha.text);
+    // A senha é obrigatória nesta tela: ela existe justamente para defini-la.
+    if (senha.text.trim().isEmpty) {
+      _mostrarDialogo("Campo obrigatório", "Digite a nova senha.");
+      return false;
+    }
 
-      if (senha.text.length < 8 ||
-          !temMaiuscula ||
-          !temNumero ||
-          !temEspecial) {
-        _mostrarDialogo(
-          "Senha fraca",
-          "A senha deve ter:\n"
-              "- Pelo menos 8 caracteres\n"
-              "- Pelo menos 1 letra maiúscula\n"
-              "- Pelo menos 1 número\n"
-              "- Pelo menos 1 caractere especial",
-        );
-        return false;
-      }
+    final temMaiuscula = RegExp(r'[A-Z]').hasMatch(senha.text);
+    final temNumero = RegExp(r'[0-9]').hasMatch(senha.text);
+    final temEspecial = RegExp(
+      r'[!@#\$&*~%^()_\-+=<>?/\\|{}[\]:;.,]',
+    ).hasMatch(senha.text);
 
-      if (senha.text != confirmarSenha.text) {
-        _mostrarDialogo("Erro", "As senhas não coincidem.");
-        return false;
-      }
+    if (senha.text.length < 8 || !temMaiuscula || !temNumero || !temEspecial) {
+      _mostrarDialogo(
+        "Senha fraca",
+        "A senha deve ter:\n"
+            "- Pelo menos 8 caracteres\n"
+            "- Pelo menos 1 letra maiúscula\n"
+            "- Pelo menos 1 número\n"
+            "- Pelo menos 1 caractere especial",
+      );
+      return false;
+    }
+
+    if (senha.text != confirmarSenha.text) {
+      _mostrarDialogo("Erro", "As senhas não coincidem.");
+      return false;
     }
 
     return true;
   }
 
   Future<void> _atualizar() async {
+    if (_carregando) return;
     if (!_validarCampos()) return;
 
     if (!(await _temInternet())) {
@@ -145,10 +173,25 @@ class _RedefinirSenhaScreenState extends State<RedefinirSenhaScreen> {
       return; // Interrompe a execução aqui
     }
 
+    setState(() => _carregando = true);
+
     try {
       final session = Supabase.instance.client.auth.currentSession;
       if (session == null) {
-        _mostrarDialogo("Sessão inválida", "Abra o link do email novamente.");
+        setState(() => _carregando = false);
+        _mostrarDialogo(
+          "Sessão inválida",
+          "O link de recuperação expirou ou já foi usado. Solicite um novo link e abra-o novamente.",
+          botoesPersonalizados: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pushReplacementNamed(context, '/login');
+              },
+              child: const Text("Ir para login"),
+            ),
+          ],
+        );
         return;
       }
 
@@ -174,7 +217,13 @@ class _RedefinirSenhaScreenState extends State<RedefinirSenhaScreen> {
       }
       _mostrarDialogo("Erro de autenticação", mensagemErro);
     } catch (e) {
-      _mostrarDialogo("Erro", "Falha ao atualizar: $e");
+      debugPrint("Erro ao atualizar senha: $e");
+      _mostrarDialogo(
+        "Erro",
+        "Não foi possível atualizar sua senha agora. Tente novamente.",
+      );
+    } finally {
+      if (mounted) setState(() => _carregando = false);
     }
   }
 
@@ -208,15 +257,33 @@ class _RedefinirSenhaScreenState extends State<RedefinirSenhaScreen> {
                 ),
                 TextField(
                   controller: confirmarSenha,
-                  obscureText: true,
-                  decoration: const InputDecoration(
+                  obscureText: !_confirmarSenhaVisivel,
+                  decoration: InputDecoration(
                     labelText: "Confirmar nova senha",
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _confirmarSenhaVisivel
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _confirmarSenhaVisivel = !_confirmarSenhaVisivel;
+                        });
+                      },
+                    ),
                   ),
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton(
-                  onPressed: _atualizar,
-                  child: const Text("Salvar"),
+                  onPressed: _carregando ? null : _atualizar,
+                  child: _carregando
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text("Salvar"),
                 ),
               ],
             ),
