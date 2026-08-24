@@ -314,227 +314,383 @@ class _CadastroScreenState extends State<CadastroScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      appBar: AppBar(title: Text("Cadastro")),
-      body: Stack(
-        children: [
-          Padding(
-            padding: EdgeInsets.all(16),
-            child: Column(
-              children: [
-                const SizedBox(height: 10),
+      backgroundColor: Colors.transparent,
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF003D6A), // Azul escuro no topo
+              Color(0xFF4A8CA9), // Azul claro na base
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Stack(
+            children: [
+              SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 20,
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      "Crie sua conta",
+                      style: TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
 
-                // --- COMPONENTE DO AVATAR COM ÍCONE DE CÂMERA ---
-                Center(
-                  child: GestureDetector(
-                    // Agora o clique em QUALQUER lugar do componente segue a mesma regra
-                    onTap: () {
-                      if (_imagemSelecionada != null) {
-                        // Se já tem imagem, o clique (na foto ou no X) remove e volta ao início
-                        setState(() {
-                          _imagemSelecionada = null;
-                        });
-                      } else {
-                        // Se não tem imagem, abre o seletor
-                        _selecionarImagem();
-                      }
-                    },
-                    child: Stack(
-                      children: [
-                        // Avatar Principal
-                        CircleAvatar(
-                          radius: 60, // Tamanho do avatar
-                          backgroundImage: _imagemSelecionada != null
-                              ? FileImage(_imagemSelecionada!)
-                              : null,
-                          child: _imagemSelecionada == null
-                              ? ClipOval(
-                                  child: Image.asset(
-                                    'assets/images/avatar.webp',
-                                    width: 120,
-                                    height: 120,
-                                    fit: BoxFit.cover,
-                                  ),
-                                )
-                              : null,
+                    // --- AVATAR COM CÂMERA ---
+                    Center(
+                      child: GestureDetector(
+                        onTap: () {
+                          if (_imagemSelecionada != null) {
+                            setState(() {
+                              _imagemSelecionada = null;
+                            });
+                          } else {
+                            _selecionarImagem();
+                          }
+                        },
+                        child: Stack(
+                          children: [
+                            CircleAvatar(
+                              radius: 55,
+                              backgroundColor: const Color(0xFF007ACC),
+                              backgroundImage: _imagemSelecionada != null
+                                  ? FileImage(_imagemSelecionada!)
+                                  : null,
+                              child: _imagemSelecionada == null
+                                  ? const Icon(
+                                      Icons.person,
+                                      size: 80,
+                                      color: Colors.white,
+                                    )
+                                  : null,
+                            ),
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: Icon(
+                                _imagemSelecionada != null
+                                    ? Icons.close
+                                    : Icons.camera_alt,
+                                size: 32,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
                         ),
-                        // Botão indicador no canto (Apenas visual ou clique redundante)
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: CircleAvatar(
-                            backgroundColor: _imagemSelecionada != null
-                                ? Colors
-                                      .red // Fica vermelho quando tem o "X" para indicar remoção
-                                : Theme.of(context).primaryColor,
-                            radius: 20,
-                            child: Icon(
-                              _imagemSelecionada != null
-                                  ? Icons
-                                        .close // Ícone de "X"
-                                  : Icons.add_a_photo, // Ícone de câmera
-                              size: 20,
-                              color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // --- CAMPO NOME ---
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "Nome:",
+                        style: TextStyle(color: Colors.white, fontSize: 16),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: nome,
+                      style: const TextStyle(color: Colors.black87),
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // --- CAMPO EMAIL ---
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "E-mail:",
+                        style: TextStyle(color: Colors.white, fontSize: 16),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: email,
+                      keyboardType: TextInputType.emailAddress,
+                      style: const TextStyle(color: Colors.black87),
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // --- CAMPO SENHA ---
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "Senha:",
+                        style: TextStyle(color: Colors.white, fontSize: 16),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: senha,
+                      obscureText: !_senhaVisivel,
+                      style: const TextStyle(color: Colors.black87),
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _senhaVisivel
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                            color: const Color(0xFF003D6A),
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _senhaVisivel = !_senhaVisivel;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // --- CAMPO CONFIRMAR SENHA ---
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "Confirmar Senha:",
+                        style: TextStyle(color: Colors.white, fontSize: 16),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: confirmarSenha,
+                      obscureText: true,
+                      style: const TextStyle(color: Colors.black87),
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+
+                    // --- BOTÃO CADASTRAR-SE ---
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0088CC),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(25),
+                          ),
+                          elevation: 3,
+                        ),
+                        onPressed: (_segundosRestantes == 0 && !_carregando)
+                            ? _processarAcaoEmail
+                            : null,
+                        child: _carregando
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Text(
+                                _segundosRestantes > 0
+                                    ? "Aguarde ${_segundosRestantes}s"
+                                    : (_emailEnviado
+                                          ? "Reenviar"
+                                          : "Cadastrar-se"),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // --- DIVISOR "OU" ---
+                    Row(
+                      children: const [
+                        Expanded(
+                          child: Divider(color: Colors.white38, thickness: 1),
+                        ),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 12),
+                          child: Text(
+                            "OU",
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-                TextField(
-                  controller: nome,
-                  decoration: InputDecoration(labelText: "Nome"),
-                ),
-                TextField(
-                  controller: email,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: InputDecoration(labelText: "Email"),
-                ),
-                TextField(
-                  controller: senha,
-                  obscureText: !_senhaVisivel,
-                  decoration: InputDecoration(
-                    labelText: "Senha",
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _senhaVisivel ? Icons.visibility_off : Icons.visibility,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _senhaVisivel = !_senhaVisivel;
-                        });
-                      },
-                    ),
-                  ),
-                ),
-                TextField(
-                  controller: confirmarSenha,
-                  obscureText: true,
-                  decoration: InputDecoration(labelText: "Confirmar senha"),
-                ),
-
-                SizedBox(height: 20),
-
-                // BOTÃO CADASTRAR
-                SizedBox(
-                  child: ElevatedButton(
-                    onPressed: (_segundosRestantes == 0 && !_carregando)
-                        ? _processarAcaoEmail
-                        : null, // Desabilita o botão se estiver carregando ou no timer
-                    child: _carregando
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(
-                            _segundosRestantes > 0
-                                ? "Aguarde ${_segundosRestantes}s"
-                                : (_emailEnviado ? "Reenviar" : "Cadastrar"),
-                          ),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-                GestureDetector(
-                  onTap: () {
-                    Navigator.pushReplacementNamed(context, '/login');
-                  },
-                  child: Text.rich(
-                    TextSpan(
-                      text: "Já tem conta? ",
-                      style: const TextStyle(color: Colors.black87),
-                      children: [
-                        TextSpan(
-                          text: "Faça o login",
-                          style: TextStyle(
-                            color: Colors.blue,
-                            fontWeight: FontWeight.bold,
-                            decoration: TextDecoration.underline,
-                          ),
+                        Expanded(
+                          child: Divider(color: Colors.white38, thickness: 1),
                         ),
                       ],
                     ),
-                  ),
-                ),
+                    const SizedBox(height: 20),
 
-                // TEXTO "OU" CENTRALIZADO
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Row(
-                    children: const [
-                      Expanded(child: Divider()),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Text("ou", style: TextStyle(color: Colors.grey)),
+                    // --- BOTÃO GOOGLE ---
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(25),
+                          ),
+                          elevation: 2,
+                        ),
+                        icon: Image.asset(
+                          'assets/images/google_logo.webp',
+                          width: 22,
+                          height: 22,
+                        ),
+                        label: const Text(
+                          "Continuar com o Google",
+                          style: TextStyle(
+                            color: Color(0xFF003D6A),
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        onPressed: () async {
+                          await Supabase.instance.client.auth.signInWithOAuth(
+                            OAuthProvider.google,
+                            redirectTo: 'io.supabase.flutter://login-callback',
+                          );
+                        },
                       ),
-                      Expanded(child: Divider()),
-                    ],
-                  ),
-                ),
+                    ),
+                    const SizedBox(height: 24),
 
-                // BOTÃO GOOGLE (AGORA NO TOPO)
-                ElevatedButton.icon(
-                  icon: Image.asset(
-                    'assets/images/google_logo.webp',
-                    width: 24,
-                    height: 24,
-                  ),
-                  label: const Text("Continuar com Google"),
-                  onPressed: () async {
-                    await Supabase.instance.client.auth.signInWithOAuth(
-                      OAuthProvider.google,
-                      redirectTo: 'io.supabase.flutter://login-callback',
-                    );
-                  },
+                    // --- LINK PARA LOGIN ---
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.pushReplacementNamed(context, '/login');
+                      },
+                      child: const Text(
+                        "Já possui login? Entre aqui",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          decoration: TextDecoration.underline,
+                          decorationColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 35),
+
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Image.asset(
+                        'assets/images/titulo.webp',
+                        width: 140,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              // --- IMAGEM DE MARCA NO RODAPÉ ---
+            ],
           ),
-          Positioned(
-            bottom: 25, // Margem do fundo
-            left: 25, // Margem da esquerda
-            child: Image.asset('assets/images/titulo.webp', width: 150),
-          ),
-        ],
+        ),
       ),
       floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          // Botão A-
           FloatingActionButton(
             heroTag: "btn_diminuir",
-            // Desabilita visualmente se chegar no limite 0
             onPressed: _nivelZoom > 0 ? () => _atualizarZoom(false) : null,
-            backgroundColor: _nivelZoom > 0 ? null : Colors.grey.shade300,
+            backgroundColor: _nivelZoom > 0
+                ? const Color(0xFF97CADB)
+                : Colors.grey.shade300,
+            foregroundColor: _nivelZoom > 0
+                ? const Color(0xFF005E7D)
+                : Colors.grey.shade600,
             shape: const CircleBorder(),
             child: Text(
               "A-",
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: _nivelZoom > 0 ? null : Colors.grey.shade600,
+                color: _nivelZoom > 0
+                    ? const Color(0xFF005E7D)
+                    : Colors.grey.shade600,
               ),
             ),
           ),
-
           const SizedBox(width: 12),
-
-          // Botão A+
           FloatingActionButton(
             heroTag: "btn_aumentar",
-            // Desabilita visualmente se chegar no limite 2
             onPressed: _nivelZoom < 2 ? () => _atualizarZoom(true) : null,
-            backgroundColor: _nivelZoom < 2 ? null : Colors.grey.shade300,
+            backgroundColor: _nivelZoom < 2
+                ? const Color(0xFF2F8BAF)
+                : Colors.grey.shade300,
+            foregroundColor: _nivelZoom < 2
+                ? const Color(0xFFF5F5F5)
+                : Colors.grey.shade600,
             shape: const CircleBorder(),
             child: Text(
               "A+",
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: _nivelZoom < 2 ? null : Colors.grey.shade600,
+                color: _nivelZoom < 2
+                    ? const Color(0xFFF5F5F5)
+                    : Colors.grey.shade600,
               ),
             ),
           ),
