@@ -44,7 +44,6 @@ class _EditarScreenState extends State<EditarScreen> {
       data,
     ) {
       final user = data.session?.user;
-      // Se o email atual for igual ao que tentamos alterar e não houver mais 'newEmail' pendente
       if (user != null &&
           user.email == _ultimoEmailTentaAlterar &&
           user.newEmail == null &&
@@ -82,10 +81,7 @@ class _EditarScreenState extends State<EditarScreen> {
       }
     });
 
-    // Salva no disco
     await prefs.setInt('nivel_zoom', _nivelZoom);
-
-    // Acessa o estado do MyApp através da chave global e chama o método de atualização
     myAppKey.currentState?.atualizarEscala(_nivelZoom);
   }
 
@@ -93,7 +89,7 @@ class _EditarScreenState extends State<EditarScreen> {
     try {
       final XFile? imagem = await _picker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 70, // Compacta um pouco para não pesar no Supabase
+        imageQuality: 70,
       );
 
       if (imagem != null) {
@@ -119,7 +115,6 @@ class _EditarScreenState extends State<EditarScreen> {
         _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
       });
     } catch (e) {
-      // Falha ao carregar preferências não é crítica; a tela segue com o padrão.
       debugPrint("Erro ao carregar configurações: $e");
     }
   }
@@ -159,7 +154,6 @@ class _EditarScreenState extends State<EditarScreen> {
       if (mounted) setState(() => _carregando = false);
     }
 
-    // Se nem o servidor nem o cache local tinham os dados, avisa o usuário
     if (!carregouAlgumDado && mounted) {
       _mostrarDialogo(
         "Erro",
@@ -178,7 +172,6 @@ class _EditarScreenState extends State<EditarScreen> {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (_segundosRestantes == 0) {
         timer.cancel();
-        // Se o tempo acabou sem confirmação, avisamos o usuário
         if (_emailAlteradoPendente && mounted) {
           _mostrarSnackBar(
             "O tempo para confirmar o novo e-mail expirou. "
@@ -189,18 +182,15 @@ class _EditarScreenState extends State<EditarScreen> {
         if (mounted) {
           setState(() => _segundosRestantes--);
 
-          // A cada 3 segundos, verificamos no Supabase se o email foi confirmado
           if (_segundosRestantes % 3 == 0 && _emailAlteradoPendente) {
             try {
-              // Força a atualização da sessão e busca dados do servidor
               final response = await Supabase.instance.client.auth.getUser();
               final user = response.user;
 
-              // Se o email atual for o novo e o campo 'newEmail' sumiu, confirmou!
               if (user != null &&
                   user.email == _ultimoEmailTentaAlterar &&
                   user.newEmail == null) {
-                timer.cancel(); // Para o contador
+                timer.cancel();
 
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -208,7 +198,6 @@ class _EditarScreenState extends State<EditarScreen> {
                       content: Text("E-mail confirmado com sucesso!"),
                     ),
                   );
-                  // Redireciona o usuário
                   Navigator.pushReplacementNamed(context, '/');
                 }
               }
@@ -227,7 +216,6 @@ class _EditarScreenState extends State<EditarScreen> {
       if (connectivityResult.contains(ConnectivityResult.none)) {
         return false;
       }
-      // Opcional: Checagem real de DNS
       final result = await InternetAddress.lookup('google.com');
       return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
     } catch (_) {
@@ -235,9 +223,6 @@ class _EditarScreenState extends State<EditarScreen> {
     }
   }
 
-  // Agora retorna o Future do showDialog, permitindo aguardar o fechamento
-  // do diálogo quando necessário (ex: antes de navegar), e aceita botões
-  // personalizados.
   Future<void> _mostrarDialogo(
     String titulo,
     String mensagem, {
@@ -330,8 +315,6 @@ class _EditarScreenState extends State<EditarScreen> {
             _imagemSelecionada!,
           );
         } catch (e) {
-          // Falha no upload da foto não deve impedir a atualização dos
-          // demais dados, mas o usuário precisa saber.
           setState(() => _carregando = false);
           await _mostrarDialogo(
             "Aviso",
@@ -351,7 +334,6 @@ class _EditarScreenState extends State<EditarScreen> {
         userMetadata['avatar_url'] = novaUrlAvatar;
       }
 
-      // 1. Faz a atualização
       await auth.updateUser(
         UserAttributes(
           email: emailNovo,
@@ -361,12 +343,9 @@ class _EditarScreenState extends State<EditarScreen> {
         emailRedirectTo: 'io.supabase.flutter://login-callback',
       );
 
-      // 2. Busca o estado atualizado do usuário para ver se o e-mail entrou em "espera"
       final response = await auth.getUser();
       final userDepois = response.user;
 
-      // Verificamos se existe um 'new_email' no objeto do usuário.
-      // O Supabase preenche esse campo enquanto o link não é clicado.
       bool trocaDeEmailPendente = userDepois?.newEmail != null;
 
       if (trocaDeEmailPendente) {
@@ -381,12 +360,10 @@ class _EditarScreenState extends State<EditarScreen> {
           "Para concluir a alteração para $emailNovo, você deve clicar no link enviado para o seu e-mail.",
         );
       } else {
-        // 3. SÓ LEVA PARA HOME SE NÃO HOUVER E-MAIL PENDENTE
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("Perfil atualizado com sucesso!")),
           );
-          // Só volta para a home se não estivermos esperando confirmação de e-mail
           Navigator.pushReplacementNamed(context, '/');
         }
       }
@@ -415,7 +392,7 @@ class _EditarScreenState extends State<EditarScreen> {
           "Parece que você está offline. Verifique sua conexão com a internet e tente novamente.",
         );
       }
-      return; // Interrompe a execução aqui
+      return;
     }
 
     final confirmar = await showDialog<bool>(
@@ -443,7 +420,6 @@ class _EditarScreenState extends State<EditarScreen> {
     setState(() => _excluindo = true);
 
     try {
-      // 🔥 chama Edge Function (você precisa criar no Supabase)
       final user = Supabase.instance.client.auth.currentUser;
 
       await Supabase.instance.client.functions.invoke(
@@ -455,7 +431,6 @@ class _EditarScreenState extends State<EditarScreen> {
 
       if (!mounted) return;
 
-      // Mostra a confirmação e aguarda o usuário fechar o diálogo antes de navegar
       await _mostrarDialogo(
         "Conta excluída",
         "Sua conta foi excluída com sucesso.",
@@ -474,222 +449,371 @@ class _EditarScreenState extends State<EditarScreen> {
     }
   }
 
+  Widget _buildFieldLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 6),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _buildInputDecoration({Widget? suffixIcon}) {
+    return InputDecoration(
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      suffixIcon: suffixIcon,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(25),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(25),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(25),
+        borderSide: BorderSide.none,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: false,
-      appBar: AppBar(title: const Text("Editar conta")),
-      body: Stack(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                Center(
-                  child: GestureDetector(
-                    onTap: () {
-                      // Verifica se existe alguma imagem sendo exibida (local ou do Supabase)
-                      final temImagemLocal = _imagemSelecionada != null;
-                      final temImagemRemota =
-                          _urlImagemExistente != null &&
-                          _urlImagemExistente!.isNotEmpty;
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF0F4C81), Color(0xFF286E95), Color(0xFF438BA8)],
+          ),
+        ),
+        child: SafeArea(
+          child: Stack(
+            children: [
+              SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 20,
+                ),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 10),
+                    const Text(
+                      "Editar conta",
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
 
-                      if (temImagemLocal || temImagemRemota) {
-                        // Se houver qualquer imagem, o clique limpa ambas para voltar ao padrão
-                        setState(() {
-                          _imagemSelecionada = null;
-                          _urlImagemExistente = null;
-                        });
-                        _mostrarSnackBar("Foto removida.");
-                      } else {
-                        // Se estiver no avatar padrão, abre o seletor de fotos
-                        _selecionarImagem();
-                      }
-                    },
-                    child: Stack(
-                      children: [
-                        // Avatar Principal
-                        CircleAvatar(
-                          radius: 60, // Tamanho do avatar
-                          backgroundColor: Colors
-                              .grey
-                              .shade200, // Fundo neutro enquanto carrega
-                          backgroundImage: _imagemSelecionada != null
-                              ? FileImage(
-                                  _imagemSelecionada!,
-                                ) // 1º Prioridade: Imagem nova
-                              : (_urlImagemExistente != null &&
-                                    _urlImagemExistente!.isNotEmpty)
-                              ? NetworkImage(
-                                  _urlImagemExistente!,
-                                ) // 2º Prioridade: Imagem do Supabase
-                              : null, // Sem imagem: usa o child abaixo
-                          child:
-                              (_imagemSelecionada == null &&
-                                  (_urlImagemExistente == null ||
-                                      _urlImagemExistente!.isEmpty))
-                              ? ClipOval(
-                                  child: Image.asset(
-                                    'assets/images/avatar.webp',
-                                    width: 120,
-                                    height: 120,
-                                    fit: BoxFit.cover,
-                                  ),
-                                )
-                              : null, // Se houver imagem ativa, o child some
-                        ),
-                        // Botão do Canto (Dinâmico)
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: CircleAvatar(
-                            // Se tiver imagem ativa, o botão fica vermelho indicando a remoção
-                            backgroundColor:
-                                (_imagemSelecionada != null ||
-                                    (_urlImagemExistente != null &&
-                                        _urlImagemExistente!.isNotEmpty))
-                                ? Colors.red
-                                : Theme.of(context).primaryColor,
-                            radius: 20,
-                            child: Icon(
-                              // Muda o ícone dinamicamente para o "X" ou para a Câmera
-                              (_imagemSelecionada != null ||
+                    GestureDetector(
+                      onTap: () {
+                        final temImagemLocal = _imagemSelecionada != null;
+                        final temImagemRemota =
+                            _urlImagemExistente != null &&
+                            _urlImagemExistente!.isNotEmpty;
+
+                        if (temImagemLocal || temImagemRemota) {
+                          setState(() {
+                            _imagemSelecionada = null;
+                            _urlImagemExistente = null;
+                          });
+                          _mostrarSnackBar("Foto removida.");
+                        } else {
+                          _selecionarImagem();
+                        }
+                      },
+                      child: Stack(
+                        children: [
+                          CircleAvatar(
+                            radius: 55,
+                            backgroundColor: const Color(0xFF0073E6),
+                            backgroundImage: _imagemSelecionada != null
+                                ? FileImage(_imagemSelecionada!)
+                                : (_urlImagemExistente != null &&
+                                      _urlImagemExistente!.isNotEmpty)
+                                ? NetworkImage(_urlImagemExistente!)
+                                : null,
+                            child:
+                                (_imagemSelecionada == null &&
+                                    (_urlImagemExistente == null ||
+                                        _urlImagemExistente!.isEmpty))
+                                ? const Icon(
+                                    Icons.person,
+                                    size: 75,
+                                    color: Colors.white,
+                                  )
+                                : null,
+                          ),
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: CircleAvatar(
+                              radius: 18,
+                              backgroundColor:
+                                  (_imagemSelecionada != null ||
                                       (_urlImagemExistente != null &&
                                           _urlImagemExistente!.isNotEmpty))
-                                  ? Icons.close
-                                  : Icons.add_a_photo,
-                              size: 20,
-                              color: Colors.white,
+                                  ? Colors.red
+                                  : const Color(0xFF6B4C9A),
+                              child: Icon(
+                                (_imagemSelecionada != null ||
+                                        (_urlImagemExistente != null &&
+                                            _urlImagemExistente!.isNotEmpty))
+                                    ? Icons.close
+                                    : Icons.add_a_photo,
+                                size: 18,
+                                color: Colors.white,
+                              ),
                             ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 25),
+
+                    _buildFieldLabel("Nome:"),
+                    TextField(
+                      controller: nome,
+                      style: const TextStyle(color: Colors.black87),
+                      decoration: _buildInputDecoration(),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    _buildFieldLabel("E-mail:"),
+                    TextField(
+                      controller: email,
+                      keyboardType: TextInputType.emailAddress,
+                      style: const TextStyle(color: Colors.black87),
+                      decoration: _buildInputDecoration(),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    _buildFieldLabel("Nova Senha (opcional)"),
+                    TextField(
+                      controller: senha,
+                      obscureText: !_senhaVisivel,
+                      style: const TextStyle(color: Colors.black87),
+                      decoration: _buildInputDecoration(
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _senhaVisivel
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                            color: const Color(0xFF0F4C81),
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _senhaVisivel = !_senhaVisivel;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    _buildFieldLabel("Confirmar nova senha"),
+                    TextField(
+                      controller: confirmarSenha,
+                      obscureText: true,
+                      style: const TextStyle(color: Colors.black87),
+                      decoration: _buildInputDecoration(),
+                    ),
+
+                    const SizedBox(height: 25),
+
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: (_segundosRestantes == 0 && !_carregando)
+                            ? _atualizar
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF018ABE),
+                          elevation: 3,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(25),
+                          ),
+                        ),
+                        child: _carregando
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Text(
+                                _segundosRestantes > 0
+                                    ? "Aguarde ${_segundosRestantes}s"
+                                    : (_emailAlteradoPendente
+                                          ? "Reenviar confirmação"
+                                          : "Salvar alterações"),
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            height: 1,
+                            color: Colors.white.withOpacity(0.4),
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 12),
+                          child: Text(
+                            "ou",
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Container(
+                            height: 1,
+                            color: Colors.white.withOpacity(0.4),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ),
 
-                const SizedBox(height: 20),
-                TextField(
-                  controller: nome,
-                  decoration: const InputDecoration(labelText: "Nome"),
-                ),
-                TextField(
-                  controller: email,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: "Email"),
-                ),
-                TextField(
-                  controller: senha,
-                  obscureText: !_senhaVisivel,
-                  decoration: InputDecoration(
-                    labelText: "Nova senha (opcional)",
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _senhaVisivel ? Icons.visibility_off : Icons.visibility,
+                    const SizedBox(height: 20),
+
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: _excluindo ? null : _excluirConta,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(25),
+                          ),
+                        ),
+                        child: _excluindo
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation(
+                                    Colors.red,
+                                  ),
+                                ),
+                              )
+                            : const Text(
+                                "Excluir Conta",
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  color: Color(0xFFFF5252),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                       ),
-                      onPressed: () {
-                        setState(() {
-                          _senhaVisivel = !_senhaVisivel;
-                        });
-                      },
                     ),
-                  ),
-                ),
-                TextField(
-                  controller: confirmarSenha,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: "Confirmar nova senha",
-                  ),
-                ),
 
-                const SizedBox(height: 20),
-
-                ElevatedButton(
-                  onPressed: (_segundosRestantes == 0 && !_carregando)
-                      ? _atualizar
-                      : null,
-                  child: _carregando
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(
-                          _segundosRestantes > 0
-                              ? "Aguarde ${_segundosRestantes}s"
-                              : (_emailAlteradoPendente
-                                    ? "Reenviar confirmação"
-                                    : "Salvar alterações"),
-                        ),
+                    const SizedBox(height: 80),
+                  ],
                 ),
+              ),
 
-                // 🔴 BOTÃO EXCLUIR CONTA
-                TextButton(
-                  onPressed: _excluindo ? null : _excluirConta,
-                  style: TextButton.styleFrom(foregroundColor: Colors.red),
-                  child: _excluindo
-                      ? const SizedBox(
-                          height: 18,
-                          width: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation(Colors.red),
-                          ),
-                        )
-                      : const Text(
-                          "Excluir conta",
-                          style: TextStyle(
-                            color: Colors.red,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+              Positioned(
+                bottom: 16,
+                left: 20,
+                child: Image.asset(
+                  'assets/images/titulo.webp',
+                  width: 130,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Text(
+                      "IncluZone",
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white70,
+                      ),
+                    );
+                  },
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          Positioned(
-            bottom: 25, // Margem do fundo
-            left: 25, // Margem da esquerda
-            child: Image.asset('assets/images/titulo.webp', width: 150),
-          ),
-        ],
+        ),
       ),
       floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          // Botão A-
           FloatingActionButton(
             heroTag: "btn_diminuir",
-            // Desabilita visualmente se chegar no limite 0
             onPressed: _nivelZoom > 0 ? () => _atualizarZoom(false) : null,
-            backgroundColor: _nivelZoom > 0 ? null : Colors.grey.shade300,
+            backgroundColor: _nivelZoom > 0
+                ? const Color(0xFF97CADB)
+                : Colors.grey.shade300,
+            foregroundColor: _nivelZoom > 0
+                ? const Color(0xFF005E7D)
+                : Colors.grey.shade600,
             shape: const CircleBorder(),
             child: Text(
               "A-",
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: _nivelZoom > 0 ? null : Colors.grey.shade600,
+                color: _nivelZoom > 0
+                    ? const Color(0xFF005E7D)
+                    : Colors.grey.shade600,
               ),
             ),
           ),
-
           const SizedBox(width: 12),
-
-          // Botão A+
           FloatingActionButton(
             heroTag: "btn_aumentar",
-            // Desabilita visualmente se chegar no limite 2
             onPressed: _nivelZoom < 2 ? () => _atualizarZoom(true) : null,
-            backgroundColor: _nivelZoom < 2 ? null : Colors.grey.shade300,
+            backgroundColor: _nivelZoom < 2
+                ? const Color(0xFF2F8BAF)
+                : Colors.grey.shade300,
+            foregroundColor: _nivelZoom < 2
+                ? const Color(0xFFF5F5F5)
+                : Colors.grey.shade600,
             shape: const CircleBorder(),
             child: Text(
               "A+",
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: _nivelZoom < 2 ? null : Colors.grey.shade600,
+                color: _nivelZoom < 2
+                    ? const Color(0xFFF5F5F5)
+                    : Colors.grey.shade600,
               ),
             ),
           ),
