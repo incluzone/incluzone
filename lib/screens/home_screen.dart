@@ -1918,7 +1918,19 @@ class _HomeScreenState extends State<HomeScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      appBar: AppBar(title: const Text("Home")),
+      appBar: AppBar(
+      backgroundColor: const Color(0xFF004077), // Azul escuro igual ao da foto
+      centerTitle: true,
+      iconTheme: const IconThemeData(color: Colors.white), // Ícone do menu em branco
+      title: const Text(
+      "IncluZone",
+      style: TextStyle(
+      color: Colors.white, // Texto branco
+      fontWeight: FontWeight.bold,
+      fontSize: 22,
+    ),
+  ),
+),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2207,46 +2219,64 @@ class _HomeScreenState extends State<HomeScreen>
           ],
         ),
       ),
-      floatingActionButton: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          // Botão A-
-          FloatingActionButton(
-            heroTag: "btn_diminuir",
-            // Desabilita visualmente se chegar no limite 0
-            onPressed: _nivelZoom > 0 ? () => _atualizarZoom(false) : null,
-            backgroundColor: _nivelZoom > 0 ? null : Colors.grey.shade300,
-            shape: const CircleBorder(),
-            child: Text(
-              "A-",
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: _nivelZoom > 0 ? null : Colors.grey.shade600,
-              ),
-            ),
+floatingActionButton: Row(
+  mainAxisAlignment: MainAxisAlignment.end,
+  children: [
+    // Botão A-
+    SizedBox(
+      width: 56,
+      height: 56,
+      child: FloatingActionButton(
+        heroTag: "btn_diminuir",
+        onPressed: _nivelZoom > 0 ? () => _atualizarZoom(false) : null,
+        // Se estiver no mínimo (0), fica cinza. Caso contrário, fica azul claro.
+        backgroundColor: _nivelZoom == 0 
+            ? const Color(0xFFE0E0E0) // Cinza
+            : const Color(0xFF9BCDE0), // Azul claro
+        disabledElevation: 0,
+        elevation: 2,
+        shape: const CircleBorder(),
+        child: Text(
+          "A-",
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: _nivelZoom == 0 
+                ? const Color(0xFF9E9E9E) // Texto cinza apagado
+                : const Color(0xFF005670), // Texto azul escuro
           ),
-
-          const SizedBox(width: 12),
-
-          // Botão A+
-          FloatingActionButton(
-            heroTag: "btn_aumentar",
-            // Desabilita visualmente se chegar no limite 2
-            onPressed: _nivelZoom < 2 ? () => _atualizarZoom(true) : null,
-            backgroundColor: _nivelZoom < 2 ? null : Colors.grey.shade300,
-            shape: const CircleBorder(),
-            child: Text(
-              "A+",
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: _nivelZoom < 2 ? null : Colors.grey.shade600,
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
+    ),
+    const SizedBox(width: 12),
+    // Botão A+
+    SizedBox(
+      width: 56,
+      height: 56,
+      child: FloatingActionButton(
+        heroTag: "btn_aumentar",
+        onPressed: _nivelZoom < 2 ? () => _atualizarZoom(true) : null,
+        // Se estiver no máximo (2), fica cinza. Caso contrário, fica azul escuro.
+        backgroundColor: _nivelZoom == 2 
+            ? const Color(0xFFE0E0E0) // Cinza
+            : const Color(0xFF2B82B5), // Azul escuro
+        disabledElevation: 0,
+        elevation: 2,
+        shape: const CircleBorder(),
+        child: Text(
+          "A+",
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: _nivelZoom == 2 
+                ? const Color(0xFF9E9E9E) // Texto cinza apagado
+                : Colors.white, // Texto branco
+          ),
+        ),
+      ),
+    ),
+  ],
+),
     );
   }
 }
