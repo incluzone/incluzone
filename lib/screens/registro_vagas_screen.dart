@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:geocoding/geocoding.dart';
 import 'pre_registro_vagas_screen.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path_provider/path_provider.dart' as path_provider;
@@ -48,6 +49,9 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
   late final TextEditingController estadoController;
   bool _editandoEndereco = false;
 
+  // Evita tentar geocodificar mais de uma vez por sessão da tela
+  bool _tentativaGeocodificacaoRealizada = false;
+
   RegistroPendente? dados;
   bool carregando = false;
   bool _salvandoEmAndamento = false;
@@ -86,9 +90,11 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
         dados = args;
         _preencherControllersDeEndereco();
         _verificarPontoExistente();
+        _tentarPreencherEnderecoSeNecessario();
       } else if (args is Map<String, dynamic>) {
         // Fluxo Histórico: vindo da lista de registros já salvos
         _preencherComDadosDoHistorico(args);
+        _tentarPreencherEnderecoSeNecessario();
       } else {
         // Nenhum dado válido foi passado para a tela; avisa o usuário
         // assim que a UI estiver pronta, em vez de deixar a tela em branco.
@@ -111,6 +117,91 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
     bairroController.text = dados!.bairro ?? '';
     cidadeController.text = dados!.cidade ?? '';
     estadoController.text = dados!.estado ?? '';
+  }
+
+  /// Se o registro foi capturado offline (ou por qualquer motivo o
+  /// endereço não foi resolvido na hora), tenta geocodificar de novo
+  /// agora que a tela está aberta, aproveitando que pode haver internet.
+  /// Caso ainda assim não seja possível preencher, abre o modo de edição
+  /// automaticamente para o usuário completar manualmente.
+  Future<void> _tentarPreencherEnderecoSeNecessario() async {
+    if (dados == null || _tentativaGeocodificacaoRealizada) return;
+    _tentativaGeocodificacaoRealizada = true;
+
+    final enderecoIncompleto = logradouroController.text.trim().isEmpty ||
+        bairroController.text.trim().isEmpty ||
+        cidadeController.text.trim().isEmpty ||
+        estadoController.text.trim().isEmpty;
+
+    if (!enderecoIncompleto) return;
+
+    if (!(await _temInternet())) {
+      // Sem internet agora: não dá para geocodificar, abre edição manual
+      if (mounted) setState(() => _editandoEndereco = true);
+      return;
+    }
+
+    try {
+      final placemarks = await placemarkFromCoordinates(
+        dados!.lat,
+        dados!.lng,
+      );
+
+      if (placemarks.isNotEmpty) {
+        final place = placemarks.first;
+        if (mounted) {
+          setState(() {
+            if (logradouroController.text.trim().isEmpty) {
+              logradouroController.text = place.thoroughfare ?? '';
+            }
+            if (numeroController.text.trim().isEmpty) {
+              numeroController.text = place.subThoroughfare ?? '';
+            }
+            if (bairroController.text.trim().isEmpty) {
+              bairroController.text = place.subLocality ?? '';
+            }
+            if (cidadeController.text.trim().isEmpty) {
+              cidadeController.text = place.subAdministrativeArea ?? '';
+            }
+            if (estadoController.text.trim().isEmpty) {
+              estadoController.text = place.administrativeArea ?? '';
+            }
+          });
+
+          final aindaIncompleto = logradouroController.text.trim().isEmpty ||
+              bairroController.text.trim().isEmpty ||
+              cidadeController.text.trim().isEmpty ||
+              estadoController.text.trim().isEmpty;
+
+          if (aindaIncompleto) {
+            setState(() => _editandoEndereco = true);
+            _mostrarSnackBar(
+              "Não foi possível identificar todo o endereço. Confira os campos.",
+              erro: true,
+            );
+          } else {
+            _mostrarSnackBar("Endereço identificado automaticamente.");
+          }
+        }
+      } else {
+        if (mounted) {
+          setState(() => _editandoEndereco = true);
+          _mostrarSnackBar(
+            "Endereço não encontrado para esta localização. Preencha manualmente.",
+            erro: true,
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("Erro ao geocodificar endereço pendente: $e");
+      if (mounted) {
+        setState(() => _editandoEndereco = true);
+        _mostrarSnackBar(
+          "Não foi possível identificar o endereço. Preencha manualmente.",
+          erro: true,
+        );
+      }
+    }
   }
 
   Future<void> _atualizarZoom(bool aumentar) async {

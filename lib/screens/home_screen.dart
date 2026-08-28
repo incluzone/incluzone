@@ -843,6 +843,25 @@ class _HomeScreenState extends State<HomeScreen>
     return File('${dir.path}/markers_cache.json');
   }
 
+  /// Remove locais duplicados da lista vinda do Supabase, mantendo apenas
+  /// uma ocorrência por 'id'. Isso é necessário porque a view
+  /// 'locais_com_vagas' pode retornar o mesmo local em mais de uma linha
+  /// quando ele tem múltiplos contribuintes (fan-out de JOIN) — o que,
+  /// sem essa deduplicação, gera marcadores com chaves repetidas e quebra
+  /// a tela com "Duplicate keys found".
+  List<Map<String, dynamic>> _removerLocaisDuplicados(
+    List<Map<String, dynamic>> locais,
+  ) {
+    final Map<String, Map<String, dynamic>> porId = {};
+    for (final local in locais) {
+      final id = local['id']?.toString();
+      if (id == null) continue; // sem id não há como deduplicar com segurança
+      porId[id] =
+          local; // mantém a última ocorrência (todas deveriam ser iguais)
+    }
+    return porId.values.toList();
+  }
+
   Future<List<Map<String, dynamic>>> _buscarMarcadores() async {
     try {
       // Tenta buscar do Supabase
@@ -851,9 +870,10 @@ class _HomeScreenState extends State<HomeScreen>
           .select()
           .timeout(const Duration(seconds: 5));
 
-      final lista = List<Map<String, dynamic>>.from(response);
+      final listaBruta = List<Map<String, dynamic>>.from(response);
+      final lista = _removerLocaisDuplicados(listaBruta);
 
-      // Salva o resultado no cache local para uso offline futuro
+      // Salva o resultado (já sem duplicatas) no cache local para uso offline futuro
       final file = await _getMarkersCacheFile();
       await file.writeAsString(jsonEncode(lista));
 
@@ -873,7 +893,9 @@ class _HomeScreenState extends State<HomeScreen>
           if (!_estaOffline) {
             _avisarUsoDeCacheDeVagas();
           }
-          return List<Map<String, dynamic>>.from(dadosLocal);
+          return _removerLocaisDuplicados(
+            List<Map<String, dynamic>>.from(dadosLocal),
+          );
         }
       } catch (erroCache) {
         debugPrint("Erro ao ler cache local de vagas: $erroCache");
@@ -913,6 +935,7 @@ class _HomeScreenState extends State<HomeScreen>
     final List<Marker> markers = [];
 
     for (final local in locais) {
+      final id = local['id'];
       final lat = (local['latitude'] as num).toDouble();
       final lng = (local['longitude'] as num).toDouble();
       final vagas = local['vagas'] as List<dynamic>;
@@ -921,7 +944,11 @@ class _HomeScreenState extends State<HomeScreen>
       for (final tipo in tiposUnicos) {
         markers.add(
           Marker(
-            key: ValueKey<String>("$lat|$lng|$tipo"),
+            // Usamos o id do local (único por linha, garantido pela
+            // deduplicação em _removerLocaisDuplicados) em vez de lat/lng,
+            // que podem colidir entre locais diferentes ou se repetir por
+            // duplicação de dados vinda do backend.
+            key: ValueKey<String>("$id|$tipo"),
             point: LatLng(lat, lng),
             width: 50,
             height: 50,
@@ -941,7 +968,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _carregarMarcadores() async {
     final locais = await _buscarMarcadores();
-    _todosOsLocais = locais; // Salva a lista bruta
+    _todosOsLocais = locais; // Salva a lista bruta (já sem duplicatas)
     _aplicarFiltro();
   }
 
@@ -1919,18 +1946,22 @@ class _HomeScreenState extends State<HomeScreen>
     return Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
-      backgroundColor: const Color(0xFF004077), // Azul escuro igual ao da foto
-      centerTitle: true,
-      iconTheme: const IconThemeData(color: Colors.white), // Ícone do menu em branco
-      title: const Text(
-      "IncluZone",
-      style: TextStyle(
-      color: Colors.white, // Texto branco
-      fontWeight: FontWeight.bold,
-      fontSize: 22,
-    ),
-  ),
-),
+        backgroundColor: const Color(
+          0xFF004077,
+        ), // Azul escuro igual ao da foto
+        centerTitle: true,
+        iconTheme: const IconThemeData(
+          color: Colors.white,
+        ), // Ícone do menu em branco
+        title: const Text(
+          "IncluZone",
+          style: TextStyle(
+            color: Colors.white, // Texto branco
+            fontWeight: FontWeight.bold,
+            fontSize: 22,
+          ),
+        ),
+      ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2219,64 +2250,64 @@ class _HomeScreenState extends State<HomeScreen>
           ],
         ),
       ),
-floatingActionButton: Row(
-  mainAxisAlignment: MainAxisAlignment.end,
-  children: [
-    // Botão A-
-    SizedBox(
-      width: 56,
-      height: 56,
-      child: FloatingActionButton(
-        heroTag: "btn_diminuir",
-        onPressed: _nivelZoom > 0 ? () => _atualizarZoom(false) : null,
-        // Se estiver no mínimo (0), fica cinza. Caso contrário, fica azul claro.
-        backgroundColor: _nivelZoom == 0 
-            ? const Color(0xFFE0E0E0) // Cinza
-            : const Color(0xFF9BCDE0), // Azul claro
-        disabledElevation: 0,
-        elevation: 2,
-        shape: const CircleBorder(),
-        child: Text(
-          "A-",
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: _nivelZoom == 0 
-                ? const Color(0xFF9E9E9E) // Texto cinza apagado
-                : const Color(0xFF005670), // Texto azul escuro
+      floatingActionButton: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          // Botão A-
+          SizedBox(
+            width: 56,
+            height: 56,
+            child: FloatingActionButton(
+              heroTag: "btn_diminuir",
+              onPressed: _nivelZoom > 0 ? () => _atualizarZoom(false) : null,
+              // Se estiver no mínimo (0), fica cinza. Caso contrário, fica azul claro.
+              backgroundColor: _nivelZoom == 0
+                  ? const Color(0xFFE0E0E0) // Cinza
+                  : const Color(0xFF9BCDE0), // Azul claro
+              disabledElevation: 0,
+              elevation: 2,
+              shape: const CircleBorder(),
+              child: Text(
+                "A-",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: _nivelZoom == 0
+                      ? const Color(0xFF9E9E9E) // Texto cinza apagado
+                      : const Color(0xFF005670), // Texto azul escuro
+                ),
+              ),
+            ),
           ),
-        ),
-      ),
-    ),
-    const SizedBox(width: 12),
-    // Botão A+
-    SizedBox(
-      width: 56,
-      height: 56,
-      child: FloatingActionButton(
-        heroTag: "btn_aumentar",
-        onPressed: _nivelZoom < 2 ? () => _atualizarZoom(true) : null,
-        // Se estiver no máximo (2), fica cinza. Caso contrário, fica azul escuro.
-        backgroundColor: _nivelZoom == 2 
-            ? const Color(0xFFE0E0E0) // Cinza
-            : const Color(0xFF2B82B5), // Azul escuro
-        disabledElevation: 0,
-        elevation: 2,
-        shape: const CircleBorder(),
-        child: Text(
-          "A+",
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: _nivelZoom == 2 
-                ? const Color(0xFF9E9E9E) // Texto cinza apagado
-                : Colors.white, // Texto branco
+          const SizedBox(width: 12),
+          // Botão A+
+          SizedBox(
+            width: 56,
+            height: 56,
+            child: FloatingActionButton(
+              heroTag: "btn_aumentar",
+              onPressed: _nivelZoom < 2 ? () => _atualizarZoom(true) : null,
+              // Se estiver no máximo (2), fica cinza. Caso contrário, fica azul escuro.
+              backgroundColor: _nivelZoom == 2
+                  ? const Color(0xFFE0E0E0) // Cinza
+                  : const Color(0xFF2B82B5), // Azul escuro
+              disabledElevation: 0,
+              elevation: 2,
+              shape: const CircleBorder(),
+              child: Text(
+                "A+",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: _nivelZoom == 2
+                      ? const Color(0xFF9E9E9E) // Texto cinza apagado
+                      : Colors.white, // Texto branco
+                ),
+              ),
+            ),
           ),
-        ),
+        ],
       ),
-    ),
-  ],
-),
     );
   }
 }
