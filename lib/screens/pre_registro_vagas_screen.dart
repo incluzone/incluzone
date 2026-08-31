@@ -591,6 +591,9 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
                     label: const Text("Obter localização atual"),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 15),
+
+                      foregroundColor: const Color(0xFF2F8BAF),
+
                       textStyle: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -598,13 +601,13 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
                 const SizedBox(width: 12),
                 Container(
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer,
+                    color: const Color(0xFF2F8BAF),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: IconButton(
                     iconSize: 32,
                     icon: const Icon(Icons.camera_alt),
-                    color: Theme.of(context).colorScheme.primary,
+                    color: const Color(0xFFFFFFFF),
                     onPressed: _abrirCamera,
                   ),
                 ),
@@ -630,7 +633,10 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
                             const SizedBox(height: 12),
                             const Text(
                               "Nenhuma localização capturada ainda.",
-                              style: TextStyle(fontSize: 16, color: Colors.grey),
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey,
+                              ),
                             ),
                           ],
                         ),
@@ -677,9 +683,7 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
                                               ),
                                               actions: [
                                                 TextButton(
-                                                  child: const Text(
-                                                    "Cancelar",
-                                                  ),
+                                                  child: const Text("Cancelar"),
                                                   onPressed: () => Navigator.of(
                                                     context,
                                                   ).pop(), // Fecha o diálogo
@@ -780,14 +784,22 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
             heroTag: "btn_diminuir",
             // Desabilita visualmente se chegar no limite 0
             onPressed: _nivelZoom > 0 ? () => _atualizarZoom(false) : null,
-            backgroundColor: _nivelZoom > 0 ? null : Colors.grey.shade300,
+            backgroundColor: _nivelZoom > 0
+                ? const Color(0xFF97CADB)
+                : Colors.grey.shade300,
+            foregroundColor: _nivelZoom > 0
+                ? const Color(0xFF005E7D)
+                : Colors.grey.shade600,
+
             shape: const CircleBorder(),
             child: Text(
               "A-",
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: _nivelZoom > 0 ? null : Colors.grey.shade600,
+                color: _nivelZoom > 0
+                    ? const Color(0xFF005E7D)
+                    : Colors.grey.shade600,
               ),
             ),
           ),
@@ -799,14 +811,22 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
             heroTag: "btn_aumentar",
             // Desabilita visualmente se chegar no limite 2
             onPressed: _nivelZoom < 2 ? () => _atualizarZoom(true) : null,
-            backgroundColor: _nivelZoom < 2 ? null : Colors.grey.shade300,
+            backgroundColor: _nivelZoom < 2
+                ? const Color(0xFF2F8BAF)
+                : Colors.grey.shade300,
+            foregroundColor: _nivelZoom < 2
+                ? const Color(0xFFF5F5F5)
+                : Colors.grey.shade600,
+
             shape: const CircleBorder(),
             child: Text(
               "A+",
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: _nivelZoom < 2 ? null : Colors.grey.shade600,
+                color: _nivelZoom < 2
+                    ? const Color(0xFFF5F5F5)
+                    : Colors.grey.shade600,
               ),
             ),
           ),
