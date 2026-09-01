@@ -526,6 +526,15 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 24),
+            height: 1,
+            color: const Color(0xFFD0D0D0),
+          ),
+        ),
+
         title: const Text("Pré-registrar Vagas"),
         scrolledUnderElevation: 0,
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -592,7 +601,7 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 15),
 
-                      foregroundColor: const Color(0xFF2F8BAF),
+                      foregroundColor: const Color(0xFF005E7D),
 
                       textStyle: const TextStyle(fontWeight: FontWeight.bold),
                     ),
@@ -601,7 +610,7 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
                 const SizedBox(width: 12),
                 Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFF2F8BAF),
+                    color: const Color(0xFF005E7D),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: IconButton(
@@ -742,6 +751,13 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
                                           );
                                         }
                                       },
+
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: const Color(
+                                          0xFF005E7D,
+                                        ),
+                                      ),
+
                                       child: const Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [

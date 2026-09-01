@@ -128,7 +128,8 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
     if (dados == null || _tentativaGeocodificacaoRealizada) return;
     _tentativaGeocodificacaoRealizada = true;
 
-    final enderecoIncompleto = logradouroController.text.trim().isEmpty ||
+    final enderecoIncompleto =
+        logradouroController.text.trim().isEmpty ||
         bairroController.text.trim().isEmpty ||
         cidadeController.text.trim().isEmpty ||
         estadoController.text.trim().isEmpty;
@@ -142,10 +143,7 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
     }
 
     try {
-      final placemarks = await placemarkFromCoordinates(
-        dados!.lat,
-        dados!.lng,
-      );
+      final placemarks = await placemarkFromCoordinates(dados!.lat, dados!.lng);
 
       if (placemarks.isNotEmpty) {
         final place = placemarks.first;
@@ -168,7 +166,8 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
             }
           });
 
-          final aindaIncompleto = logradouroController.text.trim().isEmpty ||
+          final aindaIncompleto =
+              logradouroController.text.trim().isEmpty ||
               bairroController.text.trim().isEmpty ||
               cidadeController.text.trim().isEmpty ||
               estadoController.text.trim().isEmpty;
@@ -721,6 +720,10 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
             child: FilterChip(
               label: Center(child: Text(tipo)),
               selected: selecionado,
+
+              selectedColor: const Color(0xFFB3D4E8),
+              checkmarkColor: const Color(0xFF02457A),
+              side: const BorderSide(color: Color(0xFF02457A)),
               onSelected: (bool value) {
                 setState(() {
                   if (value) {
@@ -747,7 +750,20 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      appBar: AppBar(title: const Text("Registrar Vagas")),
+      appBar: AppBar(
+        title: const Text("Registrar Vagas"),
+        scrolledUnderElevation: 0,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 24),
+            height: 1,
+            color: const Color(0xFFD0D0D0),
+          ),
+        ),
+      ),
       body: Column(
         children: [
           Expanded(
@@ -872,9 +888,26 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
 
                   TextField(
                     controller: referenciaController,
+                    cursorColor: const Color(0xFF005E7D),
                     decoration: const InputDecoration(
                       labelText: "Ponto de Referência",
+
+                      labelStyle: TextStyle(color: Color(0xFF02457A)),
+
+                      floatingLabelStyle: TextStyle(color: Color(0xFF02457A)),
+
                       border: OutlineInputBorder(),
+
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFF02457A)),
+                      ),
+
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(
+                          color: Color(0xFF02457A),
+                          width: 2,
+                        ),
+                      ),
                     ),
                   ),
 
@@ -996,6 +1029,12 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
                                 vagasParaRegistro.any((v) => v.validando))
                             ? null
                             : _salvarTudo,
+
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF02457A),
+                          foregroundColor: Colors.white,
+                        ),
+
                         child: carregando
                             ? const CircularProgressIndicator()
                             : const Text("Confirmar e Salvar"),
@@ -1027,14 +1066,22 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
             heroTag: "btn_diminuir",
             // Desabilita visualmente se chegar no limite 0
             onPressed: _nivelZoom > 0 ? () => _atualizarZoom(false) : null,
-            backgroundColor: _nivelZoom > 0 ? null : Colors.grey.shade300,
+            backgroundColor: _nivelZoom > 0
+                ? const Color(0xFF97CADB)
+                : Colors.grey.shade300,
+            foregroundColor: _nivelZoom > 0
+                ? const Color(0xFF005E7D)
+                : Colors.grey.shade600,
+
             shape: const CircleBorder(),
             child: Text(
               "A-",
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: _nivelZoom > 0 ? null : Colors.grey.shade600,
+                color: _nivelZoom > 0
+                    ? const Color(0xFF005E7D)
+                    : Colors.grey.shade600,
               ),
             ),
           ),
@@ -1046,14 +1093,22 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
             heroTag: "btn_aumentar",
             // Desabilita visualmente se chegar no limite 2
             onPressed: _nivelZoom < 2 ? () => _atualizarZoom(true) : null,
-            backgroundColor: _nivelZoom < 2 ? null : Colors.grey.shade300,
+            backgroundColor: _nivelZoom < 2
+                ? const Color(0xFF2F8BAF)
+                : Colors.grey.shade300,
+            foregroundColor: _nivelZoom < 2
+                ? const Color(0xFFF5F5F5)
+                : Colors.grey.shade600,
+
             shape: const CircleBorder(),
             child: Text(
               "A+",
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: _nivelZoom < 2 ? null : Colors.grey.shade600,
+                color: _nivelZoom < 2
+                    ? const Color(0xFFF5F5F5)
+                    : Colors.grey.shade600,
               ),
             ),
           ),
