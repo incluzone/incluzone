@@ -26,7 +26,6 @@ class _CadastroScreenState extends State<CadastroScreen> {
   bool _emailEnviado = false;
   String _ultimoEmailTentado = ""; // Para comparar se o e-mail mudou
   bool _carregando = false;
-  bool _carregandoGoogle = false;
   File? _imagemSelecionada;
   final ImagePicker _picker = ImagePicker();
 
@@ -49,12 +48,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
         _navegou = true;
 
         // Se o usuário veio pelo Google, atualiza o nome padrão do Google
-        try {
-          await service.garantirPerfilGoogle();
-        } catch (e) {
-          // Não bloqueia o fluxo, apenas registra o problema
-          print("Erro ao garantir perfil do Google: $e");
-        }
+        await service.garantirPerfilGoogle();
 
         // NOVIDADE: Se o usuário selecionou uma foto no formulário de cadastro,
         // fazemos o upload dela agora que ele está autenticado com sucesso.
@@ -62,17 +56,8 @@ class _CadastroScreenState extends State<CadastroScreen> {
           try {
             await service.uploadFotoPerfil(_imagemSelecionada!);
           } catch (e) {
-            // Se falhar o upload da foto, ainda assim deixa o usuário entrar,
-            // mas avisamos para que ele saiba que precisa tentar novamente depois.
+            // Se falhar o upload da foto, ainda assim deixa o usuário entrar
             print("Erro ao subir foto no pós-cadastro: $e");
-            if (mounted) {
-              await _mostrarDialogo(
-                context,
-                "Aviso",
-                "Não foi possível enviar sua foto de perfil agora. "
-                    "Você poderá adicioná-la depois, no seu perfil.",
-              );
-            }
           }
         }
 
@@ -85,7 +70,6 @@ class _CadastroScreenState extends State<CadastroScreen> {
 
   @override
   void dispose() {
-    _timer?.cancel();
     authSub.cancel();
     nome.dispose();
     email.dispose();
@@ -108,43 +92,28 @@ class _CadastroScreenState extends State<CadastroScreen> {
     // Salva no disco
     await prefs.setInt('nivel_zoom', _nivelZoom);
 
+    // ESTA É A PARTE QUE FALTA:
     // Acessa o estado do MyApp através da chave global e chama o método de atualização
     myAppKey.currentState?.atualizarEscala(_nivelZoom);
   }
 
   Future<void> _carregarConfiguracoesIniciais() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      setState(() {
-        _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
-      });
-    } catch (e) {
-      // Falha ao carregar preferências não é crítica; a tela segue com o padrão.
-      print("Erro ao carregar configurações: $e");
-    }
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
+    });
   }
 
   Future<void> _selecionarImagem() async {
-    try {
-      final XFile? imagem = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 70, // Compacta um pouco para não pesar no Supabase
-      );
+    final XFile? imagem = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70, // Compacta um pouco para não pesar no Supabase
+    );
 
-      if (imagem != null) {
-        setState(() {
-          _imagemSelecionada = File(imagem.path);
-        });
-        _mostrarSnackBar("Foto selecionada com sucesso.");
-      }
-    } catch (e) {
-      if (mounted) {
-        _mostrarDialogo(
-          context,
-          "Erro",
-          "Não foi possível selecionar a imagem. Tente novamente.",
-        );
-      }
+    if (imagem != null) {
+      setState(() {
+        _imagemSelecionada = File(imagem.path);
+      });
     }
   }
 
@@ -170,12 +139,12 @@ class _CadastroScreenState extends State<CadastroScreen> {
   }
 
   Future<bool> _temInternet() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    if (connectivityResult.contains(ConnectivityResult.none)) {
+      return false;
+    }
+    // Opcional: Checagem real de DNS
     try {
-      final connectivityResult = await Connectivity().checkConnectivity();
-      if (connectivityResult.contains(ConnectivityResult.none)) {
-        return false;
-      }
-      // Opcional: Checagem real de DNS
       final result = await InternetAddress.lookup('google.com');
       return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
     } catch (_) {
@@ -183,39 +152,18 @@ class _CadastroScreenState extends State<CadastroScreen> {
     }
   }
 
-  // Agora retorna o Future do showDialog, permitindo que o chamador
-  // aguarde o fechamento do diálogo quando necessário (ex: antes de navegar).
-  Future<void> _mostrarDialogo(
-    BuildContext context,
-    String titulo,
-    String mensagem, {
-    List<Widget>? botoesPersonalizados,
-  }) {
-    return showDialog(
+  void _mostrarDialogo(BuildContext context, String titulo, String mensagem) {
+    showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: Text(titulo),
         content: Text(mensagem),
-        actions:
-            botoesPersonalizados ??
-            [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text("OK"),
-              ),
-            ],
-      ),
-    );
-  }
-
-  void _mostrarSnackBar(String mensagem, {bool erro = false}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(mensagem),
-        backgroundColor: erro ? Colors.red.shade600 : null,
-        duration: const Duration(seconds: 3),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("OK"),
+          ),
+        ],
       ),
     );
   }
@@ -274,11 +222,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
     }
 
     if (!(await _temInternet())) {
-      _mostrarDialogo(
-        context,
-        "Sem Conexão",
-        "Verifique sua internet e tente novamente.",
-      );
+      _mostrarDialogo(context, "Sem Conexão", "Verifique sua internet.");
       return;
     }
 
@@ -321,14 +265,15 @@ class _CadastroScreenState extends State<CadastroScreen> {
               type: OtpType.signup,
               email: emailAtual,
             );
-            _mostrarSnackBar("E-mail reenviado. Confira sua caixa de entrada.");
+            _mostrarDialogo(
+              context,
+              "E-mail Reenviado",
+              "Confira sua caixa de entrada.",
+            );
           }
 
           setState(() => _carregando = false);
           _iniciarTimer();
-        } on AuthException catch (e) {
-          setState(() => _carregando = false);
-          _tratarErroAuth(e);
         } catch (e) {
           setState(() => _carregando = false);
           // Trate o erro de "User already registered" aqui se o usuário
@@ -345,11 +290,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
       _tratarErroAuth(e);
     } catch (e) {
       setState(() => _carregando = false);
-      _mostrarDialogo(
-        context,
-        "Erro",
-        "Falha na operação. Tente novamente em instantes.",
-      );
+      _mostrarDialogo(context, "Erro", "Falha na operação.");
     } finally {
       // Garantia final de que o load sairá da tela
       if (mounted && _carregando) setState(() => _carregando = false);
@@ -363,53 +304,9 @@ class _CadastroScreenState extends State<CadastroScreen> {
         context,
         "Conta já existe",
         "Este e-mail já está cadastrado.",
-        botoesPersonalizados: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text("Corrigir e-mail"),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pushReplacementNamed(context, '/login');
-            },
-            child: Text("Ir para login"),
-          ),
-        ],
       );
     } else {
       _mostrarDialogo(context, "Erro", e.message);
-    }
-  }
-
-  Future<void> _entrarComGoogle() async {
-    if (_carregandoGoogle) return;
-
-    if (!(await _temInternet())) {
-      _mostrarDialogo(
-        context,
-        "Sem Conexão",
-        "Verifique sua internet e tente novamente.",
-      );
-      return;
-    }
-
-    setState(() => _carregandoGoogle = true);
-    try {
-      await Supabase.instance.client.auth.signInWithOAuth(
-        OAuthProvider.google,
-        redirectTo: 'io.supabase.flutter://login-callback',
-      );
-    } on AuthException catch (e) {
-      _mostrarDialogo(context, "Erro", e.message);
-    } catch (e) {
-      _mostrarDialogo(
-        context,
-        "Erro",
-        "Não foi possível continuar com o Google. Tente novamente.",
-      );
-    } finally {
-      if (mounted) setState(() => _carregandoGoogle = false);
     }
   }
 
@@ -417,233 +314,403 @@ class _CadastroScreenState extends State<CadastroScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      appBar: AppBar(title: Text("Cadastro")),
-      body: Stack(
-        children: [
-          Padding(
-            padding: EdgeInsets.all(16),
-            child: Column(
-              children: [
-                const SizedBox(height: 10),
+      backgroundColor: Colors.transparent,
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF003D6A), // Azul escuro no topo
+              Color(0xFF4A8CA9), // Azul claro na base
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Stack(
+            children: [
+              SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 20,
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      "Crie sua conta",
+                      style: TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
 
-                // --- COMPONENTE DO AVATAR COM ÍCONE DE CÂMERA ---
-                Center(
-                  child: GestureDetector(
-                    // Agora o clique em QUALQUER lugar do componente segue a mesma regra
-                    onTap: () {
-                      if (_imagemSelecionada != null) {
-                        // Se já tem imagem, o clique (na foto ou no X) remove e volta ao início
-                        setState(() {
-                          _imagemSelecionada = null;
-                        });
-                        _mostrarSnackBar("Foto removida.");
-                      } else {
-                        // Se não tem imagem, abre o seletor
-                        _selecionarImagem();
-                      }
-                    },
-                    child: Stack(
-                      children: [
-                        // Avatar Principal
-                        CircleAvatar(
-                          radius: 60, // Tamanho do avatar
-                          backgroundImage: _imagemSelecionada != null
-                              ? FileImage(_imagemSelecionada!)
-                              : null,
-                          child: _imagemSelecionada == null
-                              ? ClipOval(
-                                  child: Image.asset(
-                                    'assets/images/avatar.webp',
-                                    width: 120,
-                                    height: 120,
-                                    fit: BoxFit.cover,
-                                  ),
-                                )
-                              : null,
+                    // --- AVATAR COM CÂMERA ---
+                    Center(
+                      child: GestureDetector(
+                        onTap: () {
+                          if (_imagemSelecionada != null) {
+                            setState(() {
+                              _imagemSelecionada = null;
+                            });
+                          } else {
+                            _selecionarImagem();
+                          }
+                        },
+                        child: Stack(
+                          children: [
+                            CircleAvatar(
+                              radius: 55,
+                              backgroundColor: const Color(0xFF007ACC),
+                              backgroundImage: _imagemSelecionada != null
+                                  ? FileImage(_imagemSelecionada!)
+                                  : null,
+                              child: _imagemSelecionada == null
+                                  ? const Icon(
+                                      Icons.person,
+                                      size: 80,
+                                      color: Colors.white,
+                                    )
+                                  : null,
+                            ),
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: Icon(
+                                _imagemSelecionada != null
+                                    ? Icons.close
+                                    : Icons.camera_alt,
+                                size: 32,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
                         ),
-                        // Botão indicador no canto (Apenas visual ou clique redundante)
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: CircleAvatar(
-                            backgroundColor: _imagemSelecionada != null
-                                ? Colors
-                                      .red // Fica vermelho quando tem o "X" para indicar remoção
-                                : Theme.of(context).primaryColor,
-                            radius: 20,
-                            child: Icon(
-                              _imagemSelecionada != null
-                                  ? Icons
-                                        .close // Ícone de "X"
-                                  : Icons.add_a_photo, // Ícone de câmera
-                              size: 20,
-                              color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // --- CAMPO NOME ---
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "Nome:",
+                        style: TextStyle(color: Colors.white, fontSize: 16),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: nome,
+                      style: const TextStyle(color: Colors.black87),
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // --- CAMPO EMAIL ---
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "E-mail:",
+                        style: TextStyle(color: Colors.white, fontSize: 16),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: email,
+                      keyboardType: TextInputType.emailAddress,
+                      style: const TextStyle(color: Colors.black87),
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // --- CAMPO SENHA ---
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "Senha:",
+                        style: TextStyle(color: Colors.white, fontSize: 16),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: senha,
+                      obscureText: !_senhaVisivel,
+                      style: const TextStyle(color: Colors.black87),
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _senhaVisivel
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                            color: const Color(0xFF003D6A),
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _senhaVisivel = !_senhaVisivel;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // --- CAMPO CONFIRMAR SENHA ---
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "Confirmar Senha:",
+                        style: TextStyle(color: Colors.white, fontSize: 16),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: confirmarSenha,
+                      obscureText: true,
+                      style: const TextStyle(color: Colors.black87),
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+
+                    // --- BOTÃO CADASTRAR-SE ---
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0088CC),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(25),
+                          ),
+                          elevation: 3,
+                        ),
+                        onPressed: (_segundosRestantes == 0 && !_carregando)
+                            ? _processarAcaoEmail
+                            : null,
+                        child: _carregando
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Text(
+                                _segundosRestantes > 0
+                                    ? "Aguarde ${_segundosRestantes}s"
+                                    : (_emailEnviado
+                                          ? "Reenviar"
+                                          : "Cadastrar-se"),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // --- DIVISOR "OU" ---
+                    Row(
+                      children: const [
+                        Expanded(
+                          child: Divider(color: Colors.white38, thickness: 1),
+                        ),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 12),
+                          child: Text(
+                            "OU",
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-                TextField(
-                  controller: nome,
-                  decoration: InputDecoration(labelText: "Nome"),
-                ),
-                TextField(
-                  controller: email,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: InputDecoration(labelText: "Email"),
-                ),
-                TextField(
-                  controller: senha,
-                  obscureText: !_senhaVisivel,
-                  decoration: InputDecoration(
-                    labelText: "Senha",
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _senhaVisivel ? Icons.visibility_off : Icons.visibility,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _senhaVisivel = !_senhaVisivel;
-                        });
-                      },
-                    ),
-                  ),
-                ),
-                TextField(
-                  controller: confirmarSenha,
-                  obscureText: true,
-                  decoration: InputDecoration(labelText: "Confirmar senha"),
-                ),
-
-                SizedBox(height: 20),
-
-                // BOTÃO CADASTRAR
-                SizedBox(
-                  child: ElevatedButton(
-                    onPressed: (_segundosRestantes == 0 && !_carregando)
-                        ? _processarAcaoEmail
-                        : null, // Desabilita o botão se estiver carregando ou no timer
-                    child: _carregando
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(
-                            _segundosRestantes > 0
-                                ? "Aguarde ${_segundosRestantes}s"
-                                : (_emailEnviado ? "Reenviar" : "Cadastrar"),
-                          ),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-                GestureDetector(
-                  onTap: () {
-                    Navigator.pushReplacementNamed(context, '/login');
-                  },
-                  child: Text.rich(
-                    TextSpan(
-                      text: "Já tem conta? ",
-                      style: const TextStyle(color: Colors.black87),
-                      children: [
-                        TextSpan(
-                          text: "Faça o login",
-                          style: TextStyle(
-                            color: Colors.blue,
-                            fontWeight: FontWeight.bold,
-                            decoration: TextDecoration.underline,
-                          ),
+                        Expanded(
+                          child: Divider(color: Colors.white38, thickness: 1),
                         ),
                       ],
                     ),
-                  ),
-                ),
+                    const SizedBox(height: 20),
 
-                // TEXTO "OU" CENTRALIZADO
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Row(
-                    children: const [
-                      Expanded(child: Divider()),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Text("ou", style: TextStyle(color: Colors.grey)),
-                      ),
-                      Expanded(child: Divider()),
-                    ],
-                  ),
-                ),
-
-                // BOTÃO GOOGLE (AGORA NO TOPO)
-                ElevatedButton.icon(
-                  icon: _carregandoGoogle
-                      ? const SizedBox(
-                          height: 18,
-                          width: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Image.asset(
+                    // --- BOTÃO GOOGLE ---
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(25),
+                          ),
+                          elevation: 2,
+                        ),
+                        icon: Image.asset(
                           'assets/images/google_logo.webp',
-                          width: 24,
-                          height: 24,
+                          width: 22,
+                          height: 22,
                         ),
-                  label: Text(
-                    _carregandoGoogle
-                        ? "Conectando..."
-                        : "Continuar com Google",
-                  ),
-                  onPressed: _carregandoGoogle ? null : _entrarComGoogle,
+                        label: const Text(
+                          "Continuar com o Google",
+                          style: TextStyle(
+                            color: Color(0xFF003D6A),
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        onPressed: () async {
+                          await Supabase.instance.client.auth.signInWithOAuth(
+                            OAuthProvider.google,
+                            redirectTo: 'io.supabase.flutter://login-callback',
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // --- LINK PARA LOGIN ---
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.pushReplacementNamed(context, '/login');
+                      },
+                      child: const Text(
+                        "Já possui login? Entre aqui",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          decoration: TextDecoration.underline,
+                          decorationColor: Colors.white,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 80),
+
+                    // --- MARCA INCLUZONE NO RODAPÉ ---
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: RichText(
+                        text: const TextSpan(
+                          children: [
+                            TextSpan(
+                              text: "Inclu",
+                              style: TextStyle(
+                                color: Color(0xFFF5F5F5),
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            TextSpan(
+                              text: "Zone",
+                              style: TextStyle(
+                                color: Color(0xFF78BDD8),
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 25),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          Positioned(
-            bottom: 25, // Margem do fundo
-            left: 25, // Margem da esquerda
-            child: Image.asset('assets/images/titulo.webp', width: 150),
-          ),
-        ],
+        ),
       ),
       floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          // Botão A-
           FloatingActionButton(
             heroTag: "btn_diminuir",
-            // Desabilita visualmente se chegar no limite 0
             onPressed: _nivelZoom > 0 ? () => _atualizarZoom(false) : null,
-            backgroundColor: _nivelZoom > 0 ? null : Colors.grey.shade300,
+            backgroundColor: _nivelZoom > 0
+                ? const Color(0xFF97CADB)
+                : Colors.grey.shade300,
+            foregroundColor: _nivelZoom > 0
+                ? const Color(0xFF005E7D)
+                : Colors.grey.shade600,
             shape: const CircleBorder(),
             child: Text(
               "A-",
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: _nivelZoom > 0 ? null : Colors.grey.shade600,
+                color: _nivelZoom > 0
+                    ? const Color(0xFF005E7D)
+                    : Colors.grey.shade600,
               ),
             ),
           ),
-
           const SizedBox(width: 12),
-
-          // Botão A+
           FloatingActionButton(
             heroTag: "btn_aumentar",
-            // Desabilita visualmente se chegar no limite 2
             onPressed: _nivelZoom < 2 ? () => _atualizarZoom(true) : null,
-            backgroundColor: _nivelZoom < 2 ? null : Colors.grey.shade300,
+            backgroundColor: _nivelZoom < 2
+                ? const Color(0xFF2F8BAF)
+                : Colors.grey.shade300,
+            foregroundColor: _nivelZoom < 2
+                ? const Color(0xFFF5F5F5)
+                : Colors.grey.shade600,
             shape: const CircleBorder(),
             child: Text(
               "A+",
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: _nivelZoom < 2 ? null : Colors.grey.shade600,
+                color: _nivelZoom < 2
+                    ? const Color(0xFFF5F5F5)
+                    : Colors.grey.shade600,
               ),
             ),
           ),

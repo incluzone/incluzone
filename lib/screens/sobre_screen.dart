@@ -177,7 +177,7 @@ class _SobreScreenState extends State<SobreScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 4),
                   const Text(
                     "Este aplicativo foi desenvolvido para oferecer uma experiência acessível e segura.",
                     style: TextStyle(fontSize: 16),

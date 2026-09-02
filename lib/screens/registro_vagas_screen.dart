@@ -768,7 +768,7 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
         children: [
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1031,7 +1031,7 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
                             : _salvarTudo,
 
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF02457A),
+                          backgroundColor: const Color(0xFF005E7D),
                           foregroundColor: Colors.white,
                         ),
 
@@ -1052,7 +1052,7 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
                 .centerLeft, // Alinha a logo à esquerda (como estava no Positioned)
             child: Image.asset(
               'assets/images/titulo.webp',
-              width: 150,
+              width: 135,
               fit: BoxFit.contain,
             ),
           ),

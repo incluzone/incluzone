@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import '../services/supabase_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -7,12 +8,15 @@ import 'dart:io';
 import '../main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
+
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
+
 
 class _LoginScreenState extends State<LoginScreen> {
   final email = TextEditingController();
@@ -22,13 +26,13 @@ class _LoginScreenState extends State<LoginScreen> {
   Timer? _timer;
   int _segundosRestantes = 0;
   bool _emailEnviado = false; // Para saber se trocamos o texto do botão
-  bool _carregandoRecuperacao = false;
-  bool _carregandoLogin = false;
-  bool _carregandoGoogle = false;
+  bool _carregandoRecuperacao = false; // Nova variável
   late final StreamSubscription authSub;
   int _nivelZoom = 0;
 
+
   final service = SupabaseService();
+
 
   @override
   void initState() {
@@ -40,8 +44,10 @@ class _LoginScreenState extends State<LoginScreen> {
       final session = data.session;
       final event = data.event;
 
+
       if (event == AuthChangeEvent.passwordRecovery && !_navegou) {
         _navegou = true;
+
 
         if (mounted) {
           Navigator.pushReplacementNamed(context, '/redefinir_senha');
@@ -49,15 +55,13 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
+
       if (session != null && !_navegou) {
         _navegou = true;
 
-        try {
-          await service.garantirPerfilGoogle();
-        } catch (e) {
-          // Não bloqueia o fluxo, apenas registra o problema
-          debugPrint("Erro ao garantir perfil do Google: $e");
-        }
+
+        await service.garantirPerfilGoogle();
+
 
         if (mounted) {
           Navigator.pushReplacementNamed(context, '/');
@@ -65,6 +69,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     });
   }
+
 
   @override
   void dispose() {
@@ -75,8 +80,10 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+
   Future<void> _atualizarZoom(bool aumentar) async {
     final prefs = await SharedPreferences.getInstance();
+
 
     setState(() {
       if (aumentar && _nivelZoom < 2) {
@@ -86,32 +93,32 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     });
 
+
     // Salva no disco
     await prefs.setInt('nivel_zoom', _nivelZoom);
 
+
+    // ESTA É A PARTE QUE FALTA:
     // Acessa o estado do MyApp através da chave global e chama o método de atualização
     myAppKey.currentState?.atualizarEscala(_nivelZoom);
   }
 
+
   Future<void> _carregarConfiguracoesIniciais() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      setState(() {
-        _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
-      });
-    } catch (e) {
-      // Falha ao carregar preferências não é crítica; a tela segue com o padrão.
-      debugPrint("Erro ao carregar configurações: $e");
-    }
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
+    });
   }
 
+
   Future<bool> _temInternet() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    if (connectivityResult.contains(ConnectivityResult.none)) {
+      return false;
+    }
+    // Opcional: Checagem real de DNS
     try {
-      final connectivityResult = await Connectivity().checkConnectivity();
-      if (connectivityResult.contains(ConnectivityResult.none)) {
-        return false;
-      }
-      // Opcional: Checagem real de DNS
       final result = await InternetAddress.lookup('google.com');
       return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
     } catch (_) {
@@ -119,52 +126,28 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // Retorna o Future do showDialog, permitindo aguardar o fechamento quando
-  // necessário, e aceita botões personalizados.
-  Future<void> _mostrarDialogo(
-    String titulo,
-    String mensagem, {
-    List<Widget>? botoesPersonalizados,
-  }) {
-    return showDialog(
+
+  void _mostrarDialogo(String titulo, String mensagem) {
+    showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: Text(titulo),
         content: Text(mensagem),
-        actions:
-            botoesPersonalizados ??
-            [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("OK"),
-              ),
-            ],
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          ),
+        ],
       ),
     );
   }
 
-  void _mostrarSnackBar(String mensagem, {bool erro = false}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(mensagem),
-        backgroundColor: erro ? Colors.red.shade600 : null,
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
 
   Future<void> _fazerLogin() async {
-    if (_carregandoLogin) return;
-
     final emailText = email.text.trim();
     final senhaText = senha.text.trim();
 
-    if (emailText.isEmpty || senhaText.isEmpty) {
-      _mostrarDialogo("Campos obrigatórios", "Preencha o email e a senha.");
-      return;
-    }
 
     if (!(await _temInternet())) {
       if (mounted) {
@@ -176,32 +159,20 @@ class _LoginScreenState extends State<LoginScreen> {
       return; // Interrompe a execução aqui
     }
 
-    setState(() => _carregandoLogin = true);
+
+    if (emailText.isEmpty || senhaText.isEmpty) {
+      _mostrarDialogo("Campos obrigatórios", "Preencha o email e a senha.");
+      return;
+    }
+
 
     try {
       await service.login(emailText, senhaText);
-      // Se o login for bem-sucedido, o listener de auth cuida da navegação.
-    } on AuthException catch (e) {
-      final msg = e.message.toLowerCase();
-      if (msg.contains('invalid') || msg.contains('credentials')) {
-        _mostrarDialogo("Erro no login", "Email ou senha inválidos.");
-      } else if (msg.contains('confirm')) {
-        _mostrarDialogo(
-          "E-mail não confirmado",
-          "Confirme seu e-mail antes de fazer login. Verifique sua caixa de entrada.",
-        );
-      } else {
-        _mostrarDialogo("Erro no login", e.message);
-      }
     } catch (e) {
-      _mostrarDialogo(
-        "Erro",
-        "Não foi possível fazer login agora. Tente novamente.",
-      );
-    } finally {
-      if (mounted) setState(() => _carregandoLogin = false);
+      _mostrarDialogo("Erro no login", "Email ou senha inválidos.");
     }
   }
+
 
   void _iniciarTimer() {
     setState(() {
@@ -209,10 +180,15 @@ class _LoginScreenState extends State<LoginScreen> {
       _emailEnviado = true;
     });
 
+
     _timer?.cancel(); // Cancela timer anterior se existir
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_segundosRestantes == 0) {
         timer.cancel();
+        setState(() {
+          // Opcional: manter _emailEnviado como true para o texto ser "Reenviar"
+          // em vez de "Esqueci a senha"
+        });
       } else {
         setState(() {
           _segundosRestantes--;
@@ -221,8 +197,10 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
+
   Future<void> _recuperarSenha() async {
     final emailText = email.text.trim();
+
 
     if (emailText.isEmpty) {
       _mostrarDialogo(
@@ -232,21 +210,10 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    if (!email.text.contains("@") || !email.text.contains(".")) {
-      _mostrarDialogo("Erro", "Digite um e-mail válido.");
-      return;
-    }
-
-    if (!(await _temInternet())) {
-      _mostrarDialogo(
-        "Sem Conexão",
-        "Verifique sua internet e tente novamente.",
-      );
-      return;
-    }
 
     // Inicia o carregamento
     setState(() => _carregandoRecuperacao = true);
+
 
     try {
       final bool existe = await Supabase.instance.client.rpc(
@@ -254,28 +221,28 @@ class _LoginScreenState extends State<LoginScreen> {
         params: {'email_input': emailText},
       );
 
+
       if (!existe) {
         setState(() => _carregandoRecuperacao = false); // Para o loader
         _mostrarDialogo("Erro", "E-mail não cadastrado.");
         return;
       }
 
+
       await Supabase.instance.client.auth.resetPasswordForEmail(
         emailText,
         redirectTo: 'io.supabase.flutter://login-callback',
       );
 
+
       _iniciarTimer();
+
 
       if (mounted) {
         _mostrarDialogo(
           "Verifique seu email",
           "Enviamos um link para redefinir sua senha.",
         );
-      }
-    } on AuthException catch (e) {
-      if (mounted) {
-        _mostrarDialogo("Erro", e.message);
       }
     } catch (e) {
       if (mounted) {
@@ -292,214 +259,362 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _entrarComGoogle() async {
-    if (_carregandoGoogle) return;
-
-    if (!(await _temInternet())) {
-      _mostrarDialogo(
-        "Sem Conexão",
-        "Verifique sua internet e tente novamente.",
-      );
-      return;
-    }
-
-    setState(() => _carregandoGoogle = true);
-    try {
-      await Supabase.instance.client.auth.signInWithOAuth(
-        OAuthProvider.google,
-        redirectTo: 'io.supabase.flutter://login-callback',
-      );
-    } on AuthException catch (e) {
-      _mostrarDialogo("Erro", e.message);
-    } catch (e) {
-      _mostrarDialogo(
-        "Erro",
-        "Não foi possível continuar com o Google. Tente novamente.",
-      );
-    } finally {
-      if (mounted) setState(() => _carregandoGoogle = false);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      appBar: AppBar(title: const Text("Login")),
-      body: Stack(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                TextField(
-                  controller: email,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: "Email"),
+      backgroundColor: Colors.transparent,
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF4A8CA9), // Azul claro do topo
+              Color(0xFF003D6A), // Azul escuro da base
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
                 ),
-
-                TextField(
-                  controller: senha,
-                  obscureText: !_senhaVisivel,
-                  decoration: InputDecoration(
-                    labelText: "Senha",
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _senhaVisivel ? Icons.visibility_off : Icons.visibility,
+                child: Column(
+                  children: [
+                    const SizedBox(height: 60),
+                    const Center(
+                      // 1. Título Login
+                      child: Text(
+                        "Login",
+                        style: TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
-                      onPressed: () {
-                        setState(() {
-                          _senhaVisivel = !_senhaVisivel;
-                        });
-                      },
                     ),
-                  ),
-                ),
+                    const SizedBox(height: 24),
 
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    // Desabilita se estiver carregando ou se o timer estiver rodando
-                    onPressed:
-                        (_segundosRestantes == 0 && !_carregandoRecuperacao)
-                        ? _recuperarSenha
-                        : null,
-                    child: _carregandoRecuperacao
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.blue,
-                            ),
-                          )
-                        : Text(
-                            _segundosRestantes > 0
-                                ? "Reenviar email em ${_segundosRestantes}s"
-                                : (_emailEnviado
-                                      ? "Reenviar email"
-                                      : "Esqueci a senha"),
-                            style: TextStyle(
-                              color: _segundosRestantes > 0
-                                  ? Colors.grey
-                                  : Colors.blue,
-                            ),
-                          ),
-                  ),
-                ),
 
-                ElevatedButton(
-                  onPressed: _carregandoLogin ? null : _fazerLogin,
-                  child: _carregandoLogin
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text("Entrar"),
-                ),
-
-                const SizedBox(height: 20),
-                GestureDetector(
-                  onTap: () {
-                    Navigator.pushReplacementNamed(context, '/cadastro');
-                  },
-                  child: Text.rich(
-                    TextSpan(
-                      text: "Ainda não tem conta? ",
+                    // 3. Campo E-mail
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "E-mail:",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: email,
+                      keyboardType: TextInputType.emailAddress,
                       style: const TextStyle(color: Colors.black87),
-                      children: [
-                        TextSpan(
-                          text: "Cadastre-se",
-                          style: TextStyle(
-                            color: Colors.blue,
-                            fontWeight: FontWeight.bold,
-                            decoration: TextDecoration.underline,
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+
+
+                    const SizedBox(height: 16),
+
+
+                    // 4. Campo Senha
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "Senha:",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: senha,
+                      obscureText: !_senhaVisivel,
+                      style: const TextStyle(color: Colors.black87),
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide.none,
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _senhaVisivel
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                            color: const Color(0xFF003D6A),
                           ),
+                          onPressed: () {
+                            setState(() {
+                              _senhaVisivel = !_senhaVisivel;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+
+
+                    // 5. Esqueci a Senha
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          alignment: Alignment.centerLeft,
+                        ),
+                        onPressed:
+                            (_segundosRestantes == 0 && !_carregandoRecuperacao)
+                            ? _recuperarSenha
+                            : null,
+                        child: _carregandoRecuperacao
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Text(
+                                _segundosRestantes > 0
+                                    ? "Reenviar email em ${_segundosRestantes}s"
+                                    : (_emailEnviado
+                                          ? "Reenviar email"
+                                          : "Esqueceu a senha?"),
+                                style: TextStyle(
+                                  color: _segundosRestantes > 0
+                                      ? Colors.white54
+                                      : Colors.white,
+                                  decoration: TextDecoration.underline,
+                                  decorationColor: Colors.white,
+                                ),
+                              ),
+                      ),
+                    ),
+
+
+                    const SizedBox(height: 10),
+
+
+                    // 6. Botão Entrar
+                    SizedBox(
+                      width: double.infinity,
+                      height: 45,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF018ABE),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                        ),
+                        onPressed: _fazerLogin,
+                        child: const Text(
+                          "Entrar",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+
+
+                    const SizedBox(height: 16),
+
+
+                    // 7. Divisor "OU"
+                    Row(
+                      children: const [
+                        Expanded(
+                          child: Divider(color: Colors.white54, thickness: 1),
+                        ),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 12),
+                          child: Text(
+                            "OU",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Divider(color: Colors.white54, thickness: 1),
                         ),
                       ],
                     ),
-                  ),
-                ),
 
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Row(
-                    children: const [
-                      Expanded(child: Divider()),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Text("ou", style: TextStyle(color: Colors.grey)),
+
+                    const SizedBox(height: 16),
+
+
+                    // 8. Botão Google
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(25),
+                          ),
+                        ),
+                        icon: Image.asset(
+                          'assets/images/google_logo.webp',
+                          width: 22,
+                          height: 22,
+                        ),
+                        label: const Text(
+                          "Continuar com Google",
+                          style: TextStyle(
+                            color: Colors.black87,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        onPressed: () async {
+                          await Supabase.instance.client.auth.signInWithOAuth(
+                            OAuthProvider.google,
+                            redirectTo: 'io.supabase.flutter://login-callback',
+                          );
+                        },
                       ),
-                      Expanded(child: Divider()),
+                    ),
+
+
+                    const SizedBox(height: 20),
+
+
+                    // 9. Link de Cadastro
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.pushReplacementNamed(context, '/cadastro');
+                      },
+                      child: const Text(
+                        "Não tem conta? Cadastre-se",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          decoration: TextDecoration.underline,
+                          decorationColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+
+              // Imagem no rodapé
+              Positioned(
+                bottom: 25,
+                left: 25,
+                child: RichText(
+                  text: const TextSpan(
+                    children: [
+                      TextSpan(
+                        text: "Inclu",
+                        style: TextStyle(
+                          color: Color(0xFFF5F5F5),
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      TextSpan(
+                        text: "Zone",
+                        style: TextStyle(
+                          color: Color(0xFF78BDD8),
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-
-                ElevatedButton.icon(
-                  icon: _carregandoGoogle
-                      ? const SizedBox(
-                          height: 18,
-                          width: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Image.asset(
-                          'assets/images/google_logo.webp',
-                          width: 24,
-                          height: 24,
-                        ),
-                  label: Text(
-                    _carregandoGoogle
-                        ? "Conectando..."
-                        : "Continuar com Google",
-                  ),
-                  onPressed: _carregandoGoogle ? null : _entrarComGoogle,
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-          Positioned(
-            bottom: 25, // Margem do fundo
-            left: 25, // Margem da esquerda
-            child: Image.asset('assets/images/titulo.webp', width: 150),
-          ),
-        ],
+        ),
       ),
       floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          // Botão A-
           FloatingActionButton(
             heroTag: "btn_diminuir",
-            // Desabilita visualmente se chegar no limite 0
             onPressed: _nivelZoom > 0 ? () => _atualizarZoom(false) : null,
-            backgroundColor: _nivelZoom > 0 ? null : Colors.grey.shade300,
+            backgroundColor: _nivelZoom > 0
+                ? const Color(0xFF97CADB)
+                : Colors.grey.shade300,
+            foregroundColor: _nivelZoom > 0
+                ? const Color(0xFF005E7D)
+                : Colors.grey.shade600,
+
+
             shape: const CircleBorder(),
             child: Text(
               "A-",
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: _nivelZoom > 0 ? null : Colors.grey.shade600,
+                color: _nivelZoom > 0
+                    ? const Color(0xFF005E7D)
+                    : Colors.grey.shade600,
               ),
             ),
           ),
 
-          const SizedBox(width: 12),
 
-          // Botão A+
+          const SizedBox(width: 12),
           FloatingActionButton(
             heroTag: "btn_aumentar",
-            // Desabilita visualmente se chegar no limite 2
             onPressed: _nivelZoom < 2 ? () => _atualizarZoom(true) : null,
-            backgroundColor: _nivelZoom < 2 ? null : Colors.grey.shade300,
+            backgroundColor: _nivelZoom < 2
+                ? const Color(0xFF2F8BAF)
+                : Colors.grey.shade300,
+            foregroundColor: _nivelZoom < 2
+                ? const Color(0xFFF5F5F5)
+                : Colors.grey.shade600,
+
+
             shape: const CircleBorder(),
             child: Text(
               "A+",
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: _nivelZoom < 2 ? null : Colors.grey.shade600,
+                color: _nivelZoom < 2
+                    ? const Color(0xFFF5F5F5)
+                    : Colors.grey.shade600,
               ),
             ),
           ),

@@ -785,7 +785,7 @@ class _PreRegistroVagasScreenState extends State<PreRegistroVagasScreen> {
                   .centerLeft, // Alinha a logo à esquerda (como estava no Positioned)
               child: Image.asset(
                 'assets/images/titulo.webp',
-                width: 150,
+                width: 135,
                 fit: BoxFit.contain,
               ),
             ),

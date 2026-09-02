@@ -745,26 +745,35 @@ class _EditarScreenState extends State<EditarScreen> {
                     ),
 
                     const SizedBox(height: 80),
-                  ],
-                ),
-              ),
 
-              Positioned(
-                bottom: 16,
-                left: 20,
-                child: Image.asset(
-                  'assets/images/titulo.webp',
-                  width: 130,
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Text(
-                      "IncluZone",
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white70,
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: RichText(
+                        text: const TextSpan(
+                          children: [
+                            TextSpan(
+                              text: "Inclu",
+                              style: TextStyle(
+                                color: Color(0xFFF5F5F5),
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            TextSpan(
+                              text: "Zone",
+                              style: TextStyle(
+                                color: Color(0xFF78BDD8),
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    );
-                  },
+                    ),
+
+                    const SizedBox(height: 25),
+                  ],
                 ),
               ),
             ],

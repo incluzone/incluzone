@@ -109,6 +109,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   String? nomeUsuario;
   bool isGoogle = false;
+  String? fotoPerfilUrl;
 
   late final AnimatedMapController _animatedMapController;
   bool _aguardandoPermissao = false;
@@ -436,6 +437,9 @@ class _HomeScreenState extends State<HomeScreen>
       if (mounted) {
         setState(() {
           nomeUsuario = nome;
+
+          fotoPerfilUrl = user?.userMetadata?['avatar_url'];
+
           isGoogle =
               user?.identities?.any((i) => i.provider == 'google') ?? false;
         });
@@ -1946,22 +1950,34 @@ class _HomeScreenState extends State<HomeScreen>
     return Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
-        backgroundColor: const Color(
-          0xFF004077,
-        ), // Azul escuro igual ao da foto
+        backgroundColor: const Color(0xFF004077),
         centerTitle: true,
-        iconTheme: const IconThemeData(
-          color: Colors.white,
-        ), // Ícone do menu em branco
-        title: const Text(
-          "IncluZone",
-          style: TextStyle(
-            color: Colors.white, // Texto branco
-            fontWeight: FontWeight.bold,
-            fontSize: 22,
+        iconTheme: const IconThemeData(color: Colors.white),
+
+        title: RichText(
+          text: TextSpan(
+            children: [
+              TextSpan(
+                text: "Inclu",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 22,
+                ),
+              ),
+              TextSpan(
+                text: "Zone",
+                style: TextStyle(
+                  color: Color(0xFF78BDD8),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 22,
+                ),
+              ),
+            ],
           ),
         ),
       ),
+
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2145,111 +2161,315 @@ class _HomeScreenState extends State<HomeScreen>
       ),
 
       drawer: Drawer(
+        backgroundColor: const Color(0xFFF8F5FA),
         child: Column(
           children: [
-            // O Expanded faz o ListView ocupar todo o espaço disponível no topo e meio
             Expanded(
               child: SafeArea(
                 child: ListView(
-                  // Remova o padding padrão do ListView para não dar conflito com o topo
                   padding: EdgeInsets.zero,
                   children: [
+                    // --- CABEÇALHO DO USUÁRIO ---
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 18, 14, 14),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 28,
+                            backgroundColor: const Color(0xFF1687D9),
+
+                            backgroundImage:
+                                fotoPerfilUrl != null &&
+                                    fotoPerfilUrl!.isNotEmpty
+                                ? NetworkImage(fotoPerfilUrl!)
+                                : null,
+
+                            child:
+                                fotoPerfilUrl == null || fotoPerfilUrl!.isEmpty
+                                ? const Icon(
+                                    Icons.person,
+                                    color: Colors.white,
+                                    size: 36,
+                                  )
+                                : null,
+                          ),
+
+                          const SizedBox(width: 14),
+
+                          Expanded(
+                            child: Text(
+                              nomeUsuario != null
+                                  ? "Olá,\n$nomeUsuario!"
+                                  : "Olá,\nVisitante!",
+                              style: const TextStyle(
+                                color: Color(0xFF02457A),
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                height: 1.15,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const Divider(height: 1),
+
+                    // --- SOBRE O INCLUZONE ---
                     ListTile(
-                      title: const Text("Sobre o IncluZone"),
-                      leading: const Icon(Icons.info_outline),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 4,
+                      ),
+                      leading: const Icon(
+                        Icons.info_outline,
+                        color: Color(0xFF02457A),
+                        size: 26,
+                      ),
+                      title: const Text(
+                        "Sobre o IncluZone",
+                        style: TextStyle(
+                          color: Color(0xFF02457A),
+                          fontSize: 16,
+                        ),
+                      ),
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.pushNamed(context, '/sobre');
                       },
                     ),
+
+                    const Divider(height: 1),
+
+                    // --- SOMENTE VISITANTE ---
                     if (nomeUsuario == null) ...[
                       ListTile(
-                        title: const Text("Login"),
-                        leading: const Icon(Icons.login),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 4,
+                        ),
+                        leading: const Icon(
+                          Icons.login,
+                          color: Color(0xFF02457A),
+                          size: 26,
+                        ),
+                        title: const Text(
+                          "Login",
+                          style: TextStyle(
+                            color: Color(0xFF02457A),
+                            fontSize: 16,
+                          ),
+                        ),
                         onTap: () {
                           Navigator.pop(context);
                           Navigator.pushNamed(context, '/login');
                         },
                       ),
+
+                      const Divider(height: 1),
+
                       ListTile(
-                        title: const Text("Cadastrar"),
-                        leading: const Icon(Icons.person_add_outlined),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 4,
+                        ),
+                        leading: const Icon(
+                          Icons.person_add_outlined,
+                          color: Color(0xFF02457A),
+                          size: 26,
+                        ),
+                        title: const Text(
+                          "Cadastrar",
+                          style: TextStyle(
+                            color: Color(0xFF02457A),
+                            fontSize: 16,
+                          ),
+                        ),
                         onTap: () {
                           Navigator.pop(context);
                           Navigator.pushNamed(context, '/cadastro');
                         },
                       ),
+
+                      const Divider(height: 1),
                     ],
+
+                    // --- PRÉ-REGISTRAR VAGAS ---
                     ListTile(
-                      title: const Text("Pré-registrar Vagas"),
-                      leading: const Icon(Icons.location_on_outlined),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 4,
+                      ),
+                      leading: const Icon(
+                        Icons.location_on_outlined,
+                        color: Color(0xFF02457A),
+                        size: 26,
+                      ),
+                      title: const Text(
+                        "Pré-registrar Vagas",
+                        style: TextStyle(
+                          color: Color(0xFF02457A),
+                          fontSize: 16,
+                        ),
+                      ),
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.pushNamed(context, '/pre_registro_vagas');
                       },
                     ),
+
+                    // --- SOMENTE USUÁRIO LOGADO ---
                     if (nomeUsuario != null) ...[
+                      // EDITAR CONTA - somente login por e-mail/senha
                       if (!isGoogle) ...[
+                        const Divider(height: 1),
+
                         ListTile(
-                          title: const Text("Editar conta"),
-                          leading: const Icon(Icons.edit_outlined),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 4,
+                          ),
+                          leading: const Icon(
+                            Icons.edit_outlined,
+                            color: Color(0xFF02457A),
+                            size: 26,
+                          ),
+                          title: const Text(
+                            "Editar conta",
+                            style: TextStyle(
+                              color: Color(0xFF02457A),
+                              fontSize: 16,
+                            ),
+                          ),
                           onTap: () {
                             Navigator.pop(context);
                             Navigator.pushNamed(context, '/editar');
                           },
                         ),
                       ],
+
+                      const Divider(height: 1),
+
+                      // --- HISTÓRICO ---
                       ListTile(
-                        title: const Text("Histórico"),
-                        leading: const Icon(Icons.history),
-                        onTap: () async {
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 4,
+                        ),
+                        leading: const Icon(
+                          Icons.history,
+                          color: Color(0xFF02457A),
+                          size: 26,
+                        ),
+                        title: const Text(
+                          "Histórico",
+                          style: TextStyle(
+                            color: Color(0xFF02457A),
+                            fontSize: 16,
+                          ),
+                        ),
+                        onTap: () {
                           Navigator.pop(context);
                           Navigator.pushNamed(context, '/historico');
                         },
                       ),
+
+                      const Divider(height: 1),
+
+                      // --- SAIR ---
                       ListTile(
-                        title: const Text("Sair"),
-                        leading: const Icon(Icons.logout),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 4,
+                        ),
+                        leading: const Icon(
+                          Icons.logout,
+                          color: Colors.redAccent,
+                          size: 26,
+                        ),
+                        title: const Text(
+                          "Sair",
+                          style: TextStyle(
+                            color: Colors.redAccent,
+                            fontSize: 16,
+                          ),
+                        ),
                         onTap: () async {
                           Navigator.pop(context);
+
                           try {
                             await service.client.auth.signOut();
                           } catch (e) {
-                            // Mesmo se falhar remotamente, seguimos limpando o
-                            // estado local para não travar o usuário logado
                             debugPrint("Erro ao sair: $e");
                           }
+
                           if (!mounted) return;
+
                           setState(() => nomeUsuario = null);
                           Navigator.pushReplacementNamed(context, '/');
                         },
                       ),
-                      if (isGoogle) ...[
-                        ListTile(
-                          title: const Text(
-                            "Excluir conta",
-                            style: TextStyle(color: Colors.red),
-                          ),
-                          leading: const Icon(Icons.delete, color: Colors.red),
-                          onTap: _excluirConta,
+
+                      const Divider(height: 1),
+
+                      // --- EXCLUIR CONTA ---
+                      ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 4,
                         ),
-                      ],
+                        leading: const Icon(
+                          Icons.delete_outline,
+                          color: Colors.redAccent,
+                          size: 26,
+                        ),
+                        title: const Text(
+                          "Excluir conta",
+                          style: TextStyle(
+                            color: Colors.redAccent,
+                            fontSize: 16,
+                          ),
+                        ),
+                        onTap: _excluirConta,
+                      ),
                     ],
                   ],
                 ),
               ),
             ),
 
-            // Rodapé centralizado
+            // --- LOGO NO RODAPÉ ---
             SafeArea(
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 20),
-                child: Image.asset('assets/images/titulo.webp', width: 150),
+                padding: const EdgeInsets.only(top: 10, bottom: 22),
+                child: RichText(
+                  text: const TextSpan(
+                    children: [
+                      TextSpan(
+                        text: "Inclu",
+                        style: TextStyle(
+                          color: Color(0xFF02457A),
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      TextSpan(
+                        text: "Zone",
+                        style: TextStyle(
+                          color: Color(0xFF78BDD8),
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ],
         ),
       ),
+
       floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
@@ -2261,9 +2481,13 @@ class _HomeScreenState extends State<HomeScreen>
               heroTag: "btn_diminuir",
               onPressed: _nivelZoom > 0 ? () => _atualizarZoom(false) : null,
               // Se estiver no mínimo (0), fica cinza. Caso contrário, fica azul claro.
-              backgroundColor: _nivelZoom == 0
-                  ? const Color(0xFFE0E0E0) // Cinza
-                  : const Color(0xFF9BCDE0), // Azul claro
+              backgroundColor: _nivelZoom > 0
+                  ? const Color(0xFF97CADB)
+                  : Colors.grey.shade300,
+              foregroundColor: _nivelZoom > 0
+                  ? const Color(0xFF005E7D)
+                  : Colors.grey.shade600,
+
               disabledElevation: 0,
               elevation: 2,
               shape: const CircleBorder(),
@@ -2272,9 +2496,9 @@ class _HomeScreenState extends State<HomeScreen>
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: _nivelZoom == 0
-                      ? const Color(0xFF9E9E9E) // Texto cinza apagado
-                      : const Color(0xFF005670), // Texto azul escuro
+                  color: _nivelZoom > 0
+                      ? const Color(0xFF005E7D)
+                      : Colors.grey.shade600,
                 ),
               ),
             ),
@@ -2288,9 +2512,13 @@ class _HomeScreenState extends State<HomeScreen>
               heroTag: "btn_aumentar",
               onPressed: _nivelZoom < 2 ? () => _atualizarZoom(true) : null,
               // Se estiver no máximo (2), fica cinza. Caso contrário, fica azul escuro.
-              backgroundColor: _nivelZoom == 2
-                  ? const Color(0xFFE0E0E0) // Cinza
-                  : const Color(0xFF2B82B5), // Azul escuro
+              backgroundColor: _nivelZoom < 2
+                  ? const Color(0xFF2F8BAF)
+                  : Colors.grey.shade300,
+              foregroundColor: _nivelZoom < 2
+                  ? const Color(0xFFF5F5F5)
+                  : Colors.grey.shade600,
+
               disabledElevation: 0,
               elevation: 2,
               shape: const CircleBorder(),
@@ -2299,9 +2527,9 @@ class _HomeScreenState extends State<HomeScreen>
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: _nivelZoom == 2
-                      ? const Color(0xFF9E9E9E) // Texto cinza apagado
-                      : Colors.white, // Texto branco
+                  color: _nivelZoom < 2
+                      ? const Color(0xFFF5F5F5)
+                      : Colors.grey.shade600,
                 ),
               ),
             ),
