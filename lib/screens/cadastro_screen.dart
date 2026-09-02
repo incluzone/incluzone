@@ -629,6 +629,8 @@ class _CadastroScreenState extends State<CadastroScreen> {
                           decorationColor: Colors.white,
                         ),
                       ),
+
+                    
                     ),
 
                     const SizedBox(height: 80),
