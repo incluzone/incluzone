@@ -99,61 +99,76 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: Center(
-        child: AnimatedOpacity(
-          opacity: _opacity,
-          duration: const Duration(seconds: 1),
-          curve: Curves.easeInOut,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // --- EFEITO DROP SHADOW AQUI ---
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Camada da Sombra: Deslocada e com Blur Preto
-                  ImageFiltered(
-                    imageFilter: ImageFilter.blur(sigmaX: 4.0, sigmaY: 4.0),
-                    child: Image(
-                      image: splashImage,
-                      width: 200,
-                      color: Colors.black.withOpacity(0.5), // Cor da sombra
-                      colorBlendMode:
-                          BlendMode.srcIn, // Pinta a imagem de preto
-                      fit: BoxFit.contain,
-                      // Evita quebrar a tela caso o asset não carregue
-                      errorBuilder: (context, error, stackTrace) =>
-                          const SizedBox(width: 200, height: 200),
-                    ),
-                  ),
-                  // Camada da Imagem Real
-                  Image(
-                    image: splashImage,
-                    key: UniqueKey(),
-                    width: 200,
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) => const Icon(
-                      Icons.image_not_supported_outlined,
-                      size: 80,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ],
-              ),
-
-              // -------------------------------
-              const SizedBox(height: 24),
-
-              // Imagem com o nome do App
-              Image.asset(
-                'assets/images/titulo.webp',
-                width: 200,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) =>
-                    const SizedBox(width: 200, height: 40),
-              ),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF4A8CA9), // Azul claro do topo
+              Color(0xFF003D6A), // Azul escuro da base
             ],
+          ),
+        ),
+        child: Center(
+          child: AnimatedOpacity(
+            opacity: _opacity,
+            duration: const Duration(seconds: 1),
+            curve: Curves.easeInOut,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // --- EFEITO DROP SHADOW AQUI ---
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Camada da Sombra: Deslocada e com Blur Preto
+                    ImageFiltered(
+                      imageFilter: ImageFilter.blur(sigmaX: 4.0, sigmaY: 4.0),
+                      child: Image(
+                        image: splashImage,
+                        width: 200,
+                        color: Colors.black.withOpacity(0.5), // Cor da sombra
+                        colorBlendMode:
+                            BlendMode.srcIn, // Pinta a imagem de preto
+                        fit: BoxFit.contain,
+                        // Evita quebrar a tela caso o asset não carregue
+                        errorBuilder: (context, error, stackTrace) =>
+                            const SizedBox(width: 200, height: 200),
+                      ),
+                    ),
+                    // Camada da Imagem Real
+                    Image(
+                      image: splashImage,
+                      key: UniqueKey(),
+                      width: 200,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => const Icon(
+                        Icons.image_not_supported_outlined,
+                        size: 80,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+
+                // -------------------------------
+                const SizedBox(height: 24),
+
+                // Imagem com o nome do App
+                Image.asset(
+                  'assets/images/titulo.webp',
+                  width: 200,
+                  fit: BoxFit.contain,
+                  color: const Color(0xFFFFFFFF), // Branco #FFFFFF
+                  colorBlendMode: BlendMode.srcIn,
+                  errorBuilder: (context, error, stackTrace) =>
+                      const SizedBox(width: 200, height: 40),
+                ),
+              ],
+            ),
           ),
         ),
       ),

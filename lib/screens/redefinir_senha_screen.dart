@@ -227,263 +227,276 @@ class _RedefinirSenhaScreenState extends State<RedefinirSenhaScreen> {
     }
   }
 
-@override
-Widget build(BuildContext context) {
-  return Scaffold(
-    resizeToAvoidBottomInset: false,
-    appBar: AppBar(
-      backgroundColor: const Color(0xFF4589A4),
-      elevation: 0,
-      iconTheme: const IconThemeData(color: Colors.white),
-    ),
-    body: Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFF4589A4), // #4589a4 em cima
-            Color(0xFF013E69), // #013e69 em baixo
-          ],
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF4589A4), // #4589a4 em cima
+              Color(0xFF013E69), // #013e69 em baixo
+            ],
+          ),
         ),
-      ),
-      child: Stack(
-        children: [
-          // Conteúdo subido para a parte superior (~20% da tela acima)
-          Align(
-            alignment: const Alignment(0, -0.6),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Título da Tela
-                  const Text(
-                    "Redefinir Senha",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                    ),
+        child: SafeArea(
+          child: Stack(
+            children: [
+              Positioned(
+                top: 22, // desce um pouco a seta
+                left: 18,
+                child: IconButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  icon: const Icon(
+                    Icons.arrow_back,
+                    color: Colors.white,
+                    size: 32,
                   ),
-                  const SizedBox(height: 32),
+                  tooltip: 'Voltar',
+                ),
+              ),
 
-                  // Rótulo: Nova senha
-                  const Text(
-                    "Nova senha:",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  // Campo: Nova senha
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(25),
-                    ),
-                    child: TextField(
-                      controller: senha,
-                      obscureText: !_senhaVisivel,
-                      style: const TextStyle(color: Colors.black),
-                      decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 14,
-                        ),
-                        border: InputBorder.none,
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _senhaVisivel
-                                ? Icons.visibility_off
-                                : Icons.visibility,
-                            color: const Color(0xFF4589A4),
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              _senhaVisivel = !_senhaVisivel;
-                            });
-                          },
+              Align(
+                alignment: const Alignment(0, -0.25),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Título da Tela
+                      const Text(
+                        "Redefinir Senha",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
+                      const SizedBox(height: 32),
 
-                  // Rótulo: Confirmar nova senha
-                  const Text(
-                    "Confirmar nova senha:",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  // Campo: Confirmar nova senha
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(25),
-                    ),
-                    child: TextField(
-                      controller: confirmarSenha,
-                      obscureText: !_confirmarSenhaVisivel,
-                      style: const TextStyle(color: Colors.black),
-                      decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 14,
-                        ),
-                        border: InputBorder.none,
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _confirmarSenhaVisivel
-                                ? Icons.visibility_off
-                                : Icons.visibility,
-                            color: const Color(0xFF4589A4),
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              _confirmarSenhaVisivel = !_confirmarSenhaVisivel;
-                            });
-                          },
+                      // Rótulo: Nova senha
+                      const Text(
+                        "Nova senha:",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Botão Salvar
-                  SizedBox(
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: _carregando ? null : _atualizar,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0088CC),
-                        shape: RoundedRectangleBorder(
+                      const SizedBox(height: 8),
+                      // Campo: Nova senha
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
                           borderRadius: BorderRadius.circular(25),
                         ),
-                        elevation: 3,
-                      ),
-                      child: _carregando
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text(
-                              "Salvar",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
+                        child: TextField(
+                          controller: senha,
+                          obscureText: !_senhaVisivel,
+                          style: const TextStyle(color: Colors.black),
+                          decoration: InputDecoration(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 14,
                             ),
-                    ),
+                            border: InputBorder.none,
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _senhaVisivel
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
+                                color: const Color(0xFF4589A4),
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _senhaVisivel = !_senhaVisivel;
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Rótulo: Confirmar nova senha
+                      const Text(
+                        "Confirmar nova senha:",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // Campo: Confirmar nova senha
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                        child: TextField(
+                          controller: confirmarSenha,
+                          obscureText: !_confirmarSenhaVisivel,
+                          style: const TextStyle(color: Colors.black),
+                          decoration: InputDecoration(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 14,
+                            ),
+                            border: InputBorder.none,
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _confirmarSenhaVisivel
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
+                                color: const Color(0xFF4589A4),
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _confirmarSenhaVisivel =
+                                      !_confirmarSenhaVisivel;
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+
+                      // Botão Salvar
+                      SizedBox(
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: _carregando ? null : _atualizar,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0088CC),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(25),
+                            ),
+                            elevation: 3,
+                          ),
+                          child: _carregando
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  "Salvar",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
+              ),
+
+              // Texto IncluZone estilizado no canto inferior esquerdo
+              Positioned(
+                bottom: 25,
+                left: 25,
+                child: RichText(
+                  text: const TextSpan(
+                    children: [
+                      TextSpan(
+                        text: "Inclu",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      TextSpan(
+                        text: "Zone",
+                        style: TextStyle(
+                          color: Color(0xFF79BFE1),
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      // Botões de Zoom no padrão dos 3 estados
+      floatingActionButton: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          // Botão A-
+          SizedBox(
+            width: 56,
+            height: 56,
+            child: FloatingActionButton(
+              heroTag: "btn_diminuir",
+              onPressed: _nivelZoom > 0 ? () => _atualizarZoom(false) : null,
+              backgroundColor: _nivelZoom == 0
+                  ? const Color(0xFFE0E0E0)
+                  : const Color(0xFF9BCDE0),
+              disabledElevation: 0,
+              elevation: 2,
+              shape: const CircleBorder(),
+              child: Text(
+                "A-",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: _nivelZoom == 0
+                      ? const Color(0xFF9E9E9E)
+                      : const Color(0xFF005670),
+                ),
               ),
             ),
           ),
-
-          // Texto IncluZone estilizado no canto inferior esquerdo
-          Positioned(
-            bottom: 25,
-            left: 25,
-            child: RichText(
-              text: const TextSpan(
-                children: [
-                  TextSpan(
-                    text: "Inclu",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  TextSpan(
-                    text: "Zone",
-                    style: TextStyle(
-                      color: Color(0xFF79BFE1),
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
+          const SizedBox(width: 12),
+          // Botão A+
+          SizedBox(
+            width: 56,
+            height: 56,
+            child: FloatingActionButton(
+              heroTag: "btn_aumentar",
+              onPressed: _nivelZoom < 2 ? () => _atualizarZoom(true) : null,
+              backgroundColor: _nivelZoom == 2
+                  ? const Color(0xFFE0E0E0)
+                  : const Color(0xFF2B82B5),
+              disabledElevation: 0,
+              elevation: 2,
+              shape: const CircleBorder(),
+              child: Text(
+                "A+",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: _nivelZoom == 2
+                      ? const Color(0xFF9E9E9E)
+                      : Colors.white,
+                ),
               ),
             ),
           ),
         ],
       ),
-    ),
-
-    // Botões de Zoom no padrão dos 3 estados
-    floatingActionButton: Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        // Botão A-
-        SizedBox(
-          width: 56,
-          height: 56,
-          child: FloatingActionButton(
-            heroTag: "btn_diminuir",
-            onPressed: _nivelZoom > 0 ? () => _atualizarZoom(false) : null,
-            backgroundColor: _nivelZoom == 0
-                ? const Color(0xFFE0E0E0)
-                : const Color(0xFF9BCDE0),
-            disabledElevation: 0,
-            elevation: 2,
-            shape: const CircleBorder(),
-            child: Text(
-              "A-",
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: _nivelZoom == 0
-                    ? const Color(0xFF9E9E9E)
-                    : const Color(0xFF005670),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        // Botão A+
-        SizedBox(
-          width: 56,
-          height: 56,
-          child: FloatingActionButton(
-            heroTag: "btn_aumentar",
-            onPressed: _nivelZoom < 2 ? () => _atualizarZoom(true) : null,
-            backgroundColor: _nivelZoom == 2
-                ? const Color(0xFFE0E0E0)
-                : const Color(0xFF2B82B5),
-            disabledElevation: 0,
-            elevation: 2,
-            shape: const CircleBorder(),
-            child: Text(
-              "A+",
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: _nivelZoom == 2
-                    ? const Color(0xFF9E9E9E)
-                    : Colors.white,
-              ),
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-}
+    );
+  }
 }

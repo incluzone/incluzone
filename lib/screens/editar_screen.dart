@@ -503,6 +503,26 @@ class _EditarScreenState extends State<EditarScreen> {
         child: SafeArea(
           child: Stack(
             children: [
+              Positioned(
+                top: 10,
+                left: 10,
+                child: IconButton(
+                  onPressed: () {
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      '/',
+                      (route) => false,
+                    );
+                  },
+                  icon: const Icon(
+                    Icons.arrow_back,
+                    color: Colors.white,
+                    size: 32,
+                  ),
+                  tooltip: 'Voltar',
+                ),
+              ),
+
               SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 28,

@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import '../services/supabase_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -8,15 +7,12 @@ import 'dart:io';
 import '../main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
-
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
-
 
 class _LoginScreenState extends State<LoginScreen> {
   final email = TextEditingController();
@@ -30,9 +26,7 @@ class _LoginScreenState extends State<LoginScreen> {
   late final StreamSubscription authSub;
   int _nivelZoom = 0;
 
-
   final service = SupabaseService();
-
 
   @override
   void initState() {
@@ -44,10 +38,8 @@ class _LoginScreenState extends State<LoginScreen> {
       final session = data.session;
       final event = data.event;
 
-
       if (event == AuthChangeEvent.passwordRecovery && !_navegou) {
         _navegou = true;
-
 
         if (mounted) {
           Navigator.pushReplacementNamed(context, '/redefinir_senha');
@@ -55,13 +47,10 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-
       if (session != null && !_navegou) {
         _navegou = true;
 
-
         await service.garantirPerfilGoogle();
-
 
         if (mounted) {
           Navigator.pushReplacementNamed(context, '/');
@@ -69,7 +58,6 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     });
   }
-
 
   @override
   void dispose() {
@@ -80,10 +68,8 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-
   Future<void> _atualizarZoom(bool aumentar) async {
     final prefs = await SharedPreferences.getInstance();
-
 
     setState(() {
       if (aumentar && _nivelZoom < 2) {
@@ -93,16 +79,13 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     });
 
-
     // Salva no disco
     await prefs.setInt('nivel_zoom', _nivelZoom);
-
 
     // ESTA É A PARTE QUE FALTA:
     // Acessa o estado do MyApp através da chave global e chama o método de atualização
     myAppKey.currentState?.atualizarEscala(_nivelZoom);
   }
-
 
   Future<void> _carregarConfiguracoesIniciais() async {
     final prefs = await SharedPreferences.getInstance();
@@ -110,7 +93,6 @@ class _LoginScreenState extends State<LoginScreen> {
       _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
     });
   }
-
 
   Future<bool> _temInternet() async {
     final connectivityResult = await Connectivity().checkConnectivity();
@@ -125,7 +107,6 @@ class _LoginScreenState extends State<LoginScreen> {
       return false;
     }
   }
-
 
   void _mostrarDialogo(String titulo, String mensagem) {
     showDialog(
@@ -143,11 +124,9 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-
   Future<void> _fazerLogin() async {
     final emailText = email.text.trim();
     final senhaText = senha.text.trim();
-
 
     if (!(await _temInternet())) {
       if (mounted) {
@@ -159,12 +138,10 @@ class _LoginScreenState extends State<LoginScreen> {
       return; // Interrompe a execução aqui
     }
 
-
     if (emailText.isEmpty || senhaText.isEmpty) {
       _mostrarDialogo("Campos obrigatórios", "Preencha o email e a senha.");
       return;
     }
-
 
     try {
       await service.login(emailText, senhaText);
@@ -173,13 +150,11 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-
   void _iniciarTimer() {
     setState(() {
       _segundosRestantes = 60;
       _emailEnviado = true;
     });
-
 
     _timer?.cancel(); // Cancela timer anterior se existir
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -197,10 +172,8 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
-
   Future<void> _recuperarSenha() async {
     final emailText = email.text.trim();
-
 
     if (emailText.isEmpty) {
       _mostrarDialogo(
@@ -210,10 +183,8 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-
     // Inicia o carregamento
     setState(() => _carregandoRecuperacao = true);
-
 
     try {
       final bool existe = await Supabase.instance.client.rpc(
@@ -221,22 +192,18 @@ class _LoginScreenState extends State<LoginScreen> {
         params: {'email_input': emailText},
       );
 
-
       if (!existe) {
         setState(() => _carregandoRecuperacao = false); // Para o loader
         _mostrarDialogo("Erro", "E-mail não cadastrado.");
         return;
       }
 
-
       await Supabase.instance.client.auth.resetPasswordForEmail(
         emailText,
         redirectTo: 'io.supabase.flutter://login-callback',
       );
 
-
       _iniciarTimer();
-
 
       if (mounted) {
         _mostrarDialogo(
@@ -259,7 +226,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -281,6 +247,22 @@ class _LoginScreenState extends State<LoginScreen> {
         child: SafeArea(
           child: Stack(
             children: [
+              Positioned(
+                top: 10,
+                left: 10,
+                child: IconButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  icon: const Icon(
+                    Icons.arrow_back,
+                    color: Colors.white,
+                    size: 32,
+                  ),
+                  tooltip: 'Voltar',
+                ),
+              ),
+
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 24,
@@ -301,7 +283,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
-
 
                     // 3. Campo E-mail
                     const Align(
@@ -334,9 +315,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
 
-
                     const SizedBox(height: 16),
-
 
                     // 4. Campo Senha
                     const Align(
@@ -382,7 +361,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
 
-
                     // 5. Esqueci a Senha
                     Align(
                       alignment: Alignment.centerLeft,
@@ -421,9 +399,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
 
-
                     const SizedBox(height: 10),
-
 
                     // 6. Botão Entrar
                     SizedBox(
@@ -448,9 +424,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
 
-
                     const SizedBox(height: 16),
-
 
                     // 7. Divisor "OU"
                     Row(
@@ -474,9 +448,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ],
                     ),
 
-
                     const SizedBox(height: 16),
-
 
                     // 8. Botão Google
                     SizedBox(
@@ -511,9 +483,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
 
-
                     const SizedBox(height: 20),
-
 
                     // 9. Link de Cadastro
                     GestureDetector(
@@ -533,7 +503,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
               ),
-
 
               // Imagem no rodapé
               Positioned(
@@ -579,7 +548,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ? const Color(0xFF005E7D)
                 : Colors.grey.shade600,
 
-
             shape: const CircleBorder(),
             child: Text(
               "A-",
@@ -593,7 +561,6 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
 
-
           const SizedBox(width: 12),
           FloatingActionButton(
             heroTag: "btn_aumentar",
@@ -604,7 +571,6 @@ class _LoginScreenState extends State<LoginScreen> {
             foregroundColor: _nivelZoom < 2
                 ? const Color(0xFFF5F5F5)
                 : Colors.grey.shade600,
-
 
             shape: const CircleBorder(),
             child: Text(
