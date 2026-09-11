@@ -328,6 +328,8 @@ class _CadastroScreenState extends State<CadastroScreen> {
             ],
           ),
         ),
+
+        
         child: SafeArea(
           child: Stack(
             children: [
@@ -336,6 +338,8 @@ class _CadastroScreenState extends State<CadastroScreen> {
                   horizontal: 28,
                   vertical: 20,
                 ),
+
+                
                 child: Column(
                   children: [
                     const Text(
@@ -346,6 +350,9 @@ class _CadastroScreenState extends State<CadastroScreen> {
                         color: Colors.white,
                       ),
                     ),
+
+                    
+              
                     const SizedBox(height: 20),
 
                     // --- AVATAR COM CÂMERA ---
@@ -635,6 +642,9 @@ class _CadastroScreenState extends State<CadastroScreen> {
 
                     const SizedBox(height: 80),
 
+
+                    
+
                     // --- MARCA INCLUZONE NO RODAPÉ ---
                     Align(
                       alignment: Alignment.centerLeft,
@@ -666,9 +676,27 @@ class _CadastroScreenState extends State<CadastroScreen> {
                   ],
                 ),
               ),
+Positioned(
+  top: 10,
+  left: 10,
+  child: IconButton(
+    onPressed: () {
+      Navigator.pop(context);
+    },
+    icon: const Icon(
+      Icons.arrow_back,
+      color: Colors.white,
+      size: 32,
+    ),
+    tooltip: 'Voltar',
+  ),
+),
+              
             ],
+            
           ),
         ),
+        
       ),
       floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,
