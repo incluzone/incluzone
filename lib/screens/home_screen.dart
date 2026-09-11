@@ -252,7 +252,7 @@ class _HomeScreenState extends State<HomeScreen>
       debugPrint("Erro ao salvar preferência de zoom: $e");
       if (!mounted) return;
       setState(() {
-        _nivelZoom = nivelAnterior;
+        _nivelZoom = nivelAnterior; 
       });
       myAppKey.currentState?.atualizarEscala(_nivelZoom);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1981,15 +1981,7 @@ class _HomeScreenState extends State<HomeScreen>
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text(
-              nomeUsuario != null
-                  ? "Seja bem-vindo, $nomeUsuario!"
-                  : "Seja bem-vindo, visitante!",
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-          ),
+          
           Expanded(
             child: Stack(
               children: [
