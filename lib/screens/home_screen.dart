@@ -20,6 +20,8 @@ import 'package:flutter_map_animations/flutter_map_animations.dart';
 import 'dart:ui';
 import 'package:http/http.dart' as http;
 import '../main.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 
 class VisualizadorImagem extends StatelessWidget {
   final String url;
@@ -101,6 +103,89 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with WidgetsBindingObserver, TickerProviderStateMixin {
   final service = SupabaseService();
+
+  final FlutterTts _flutterTts = FlutterTts();
+
+  Future<void> _tracarRota(Map<String, dynamic> local) async {
+    final logradouro = local['logradouro']?.toString() ?? '';
+    final numero = local['numero']?.toString() ?? '';
+    final referencia = local['referencia']?.toString() ?? '';
+    final cidade = local['cidade']?.toString() ?? '';
+    final estado = local['estado']?.toString() ?? '';
+
+    String destino;
+
+    if (referencia.isNotEmpty) {
+      destino = '$referencia, $logradouro, $numero, $cidade - $estado';
+    } else {
+      destino = '$logradouro, $numero, $cidade - $estado';
+    }
+
+    final Uri url = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1'
+      '&destination=${Uri.encodeComponent(destino)}'
+      '&travelmode=driving',
+    );
+
+    try {
+      final abriu = await launchUrl(url, mode: LaunchMode.externalApplication);
+
+      if (!abriu && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Não foi possível abrir o aplicativo de mapas.'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não foi possível traçar a rota.')),
+      );
+    }
+  }
+
+  Future<void> _lerInformacoesVaga(
+    Map<String, dynamic> local,
+    String tipoClicado,
+    Map<String, dynamic> dadosVaga,
+  ) async {
+    final logradouro = local['logradouro']?.toString() ?? '';
+    final numero = local['numero']?.toString() ?? '';
+    final bairro = local['bairro']?.toString() ?? '';
+    final cidade = local['cidade']?.toString() ?? '';
+    final estado = local['estado']?.toString() ?? '';
+    final referencia = local['referencia']?.toString() ?? '';
+    final quantidade = dadosVaga['quantidade']?.toString() ?? 'não informada';
+
+    String texto =
+        "Vaga para $tipoClicado. "
+        "Endereço: $logradouro, número $numero. ";
+
+    if (bairro.isNotEmpty) {
+      texto += "Bairro $bairro. ";
+    }
+
+    if (cidade.isNotEmpty) {
+      texto += "$cidade, $estado. ";
+    }
+
+    if (referencia.isNotEmpty) {
+      texto += "Ponto de referência: $referencia. ";
+    }
+
+    texto += "Quantidade de vagas disponíveis no local: $quantidade.";
+
+    await _flutterTts.stop();
+    await _flutterTts.setLanguage("pt-BR");
+    await _flutterTts.setSpeechRate(0.5);
+    await _flutterTts.setVolume(1.0);
+    await _flutterTts.setPitch(1.0);
+
+    await _flutterTts.speak(texto);
+  }
+
   // Adicione esta variável para controlar a inscrição
   RealtimeChannel? _realtimeSubscription;
 
@@ -172,6 +257,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
+    _flutterTts.stop();
     WidgetsBinding.instance.removeObserver(this);
     _positionStream?.cancel(); // Para de seguir o usuário ao sair da tela
     _cacheStore.close();
@@ -252,7 +338,7 @@ class _HomeScreenState extends State<HomeScreen>
       debugPrint("Erro ao salvar preferência de zoom: $e");
       if (!mounted) return;
       setState(() {
-        _nivelZoom = nivelAnterior; 
+        _nivelZoom = nivelAnterior;
       });
       myAppKey.currentState?.atualizarEscala(_nivelZoom);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1660,6 +1746,22 @@ class _HomeScreenState extends State<HomeScreen>
                                 ),
                               ),
                             ),
+
+                            IconButton(
+                              onPressed: () {
+                                _lerInformacoesVaga(
+                                  local,
+                                  tipoClicado,
+                                  Map<String, dynamic>.from(dadosVaga),
+                                );
+                              },
+                              icon: const Icon(
+                                Icons.volume_up_outlined,
+                                color: Color(0xFF02457A),
+                                size: 27,
+                              ),
+                              tooltip: 'Ouvir informações da vaga',
+                            ),
                             IconButton(
                               icon: const Icon(
                                 Icons.edit_outlined,
@@ -1819,6 +1921,35 @@ class _HomeScreenState extends State<HomeScreen>
                         Text(
                           "Referência: ${local['referencia'] != null && local['referencia'].isNotEmpty ? local['referencia'] : 'Não registrada'}",
                           style: const TextStyle(fontSize: 12),
+                        ),
+
+                        // BOTÃO TRAÇAR ROTA
+                        const SizedBox(height: 16),
+
+                        ElevatedButton.icon(
+                          onPressed: () => _tracarRota(local),
+                          icon: const Icon(
+                            Icons.route,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          label: const Text(
+                            "Traçar Rota",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2F8BAF),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
                         ),
 
                         const Divider(height: 32),
@@ -1981,7 +2112,6 @@ class _HomeScreenState extends State<HomeScreen>
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          
           Expanded(
             child: Stack(
               children: [

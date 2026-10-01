@@ -500,29 +500,10 @@ class _EditarScreenState extends State<EditarScreen> {
             colors: [Color(0xFF0F4C81), Color(0xFF286E95), Color(0xFF438BA8)],
           ),
         ),
+
         child: SafeArea(
           child: Stack(
             children: [
-              Positioned(
-                top: 10,
-                left: 10,
-                child: IconButton(
-                  onPressed: () {
-                    Navigator.pushNamedAndRemoveUntil(
-                      context,
-                      '/',
-                      (route) => false,
-                    );
-                  },
-                  icon: const Icon(
-                    Icons.arrow_back,
-                    color: Colors.white,
-                    size: 32,
-                  ),
-                  tooltip: 'Voltar',
-                ),
-              ),
-
               SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 28,
@@ -531,6 +512,7 @@ class _EditarScreenState extends State<EditarScreen> {
                 child: Column(
                   children: [
                     const SizedBox(height: 10),
+
                     const Text(
                       "Editar conta",
                       style: TextStyle(
@@ -539,6 +521,7 @@ class _EditarScreenState extends State<EditarScreen> {
                         color: Colors.white,
                       ),
                     ),
+
                     const SizedBox(height: 20),
 
                     GestureDetector(
@@ -796,10 +779,26 @@ class _EditarScreenState extends State<EditarScreen> {
                   ],
                 ),
               ),
+              Positioned(
+                top: 10,
+                left: 10,
+                child: IconButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  icon: const Icon(
+                    Icons.arrow_back,
+                    color: Colors.white,
+                    size: 32,
+                  ),
+                  tooltip: 'Voltar',
+                ),
+              ),
             ],
           ),
         ),
       ),
+
       floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
